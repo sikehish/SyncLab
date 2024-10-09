@@ -47,6 +47,7 @@ const App: React.FC = () => {
         <div className="mt-4">
            <VncScreen
       url='ws://localhost:6080/websockify'
+      scaleViewport
       background="#000000"
       style={{
         width: '75vw',
