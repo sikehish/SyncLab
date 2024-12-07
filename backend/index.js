@@ -78,6 +78,40 @@ app.post("/api/join", async (req, res) => {
   }
 });
 
+
+//clean up 
+process.on("SIGINT", async () => {
+  console.log("Server is shutting down. Cleaning up Docker containers...");
+
+  const { stdout, stderr } = await execPromise("docker ps -a --filter 'name=ubuntu-vnc-instance' -q");
+  const containerIds = stdout.split("\n").filter(Boolean);
+
+  if (containerIds.length > 0) {
+    const stopCommand = `docker stop ${containerIds.join(" ")}`;
+    const removeCommand = `docker rm ${containerIds.join(" ")}`;
+
+    await execPromise(stopCommand);
+    await execPromise(removeCommand);
+    console.log("Cleaned up Docker containers.");
+  }
+
+  await prisma.$disconnect();
+
+  process.exit(0);
+});
+
+function execPromise(command) {
+  return new Promise((resolve, reject) => {
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        reject(`exec error: ${error}`);
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
