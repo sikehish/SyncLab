@@ -1,40 +1,43 @@
-import React, { useRef, useState } from 'react';
-import { VncScreen } from 'react-vnc';
+import React, { useRef, useState } from "react";
+import { VncScreen } from "react-vnc";
 
 interface VNCResponse {
-  vncPort: string;
+  websockifyPort: string;
 }
 
 const App: React.FC = () => {
-  const [vncPort, setVncPort] = useState<string | null>(null);
-  const [roomId, setRoomId] = useState<string>('');
+  const [websockifyPort, setWebsockifyPort] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string>("");
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
   const ref = useRef();
 
   const handleRoomAction = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch(`http://localhost:5000/api/${roomId ? 'join' : 'new-instance'}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ roomId }),
-      });
+      const response = await fetch(
+        `http://localhost:5000/api/${roomId ? "join" : "new-instance"}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ roomId }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to access the container');
+        throw new Error("Failed to access the container");
       }
 
       const data: VNCResponse = await response.json();
       console.log(data);
-      setVncPort(data.vncPort);
+      setWebsockifyPort(data.websockifyPort);
 
       if (!roomId) {
-        setCreatedRoomId(data.roomId); 
+        setCreatedRoomId(data.roomId);
       }
     } catch (error) {
-      console.error('Error accessing container:', error);
+      console.error("Error accessing container:", error);
     }
   };
 
@@ -52,7 +55,7 @@ const App: React.FC = () => {
           type="submit"
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
         >
-          {roomId ? 'Join Room' : 'Start New Room'}
+          {roomId ? "Join Room" : "Start New Room"}
         </button>
       </form>
 
@@ -60,15 +63,15 @@ const App: React.FC = () => {
         <p className="text-green-500">Created Room ID: {createdRoomId}</p>
       )}
 
-      {vncPort ? (
+      {websockifyPort ? (
         <div className="mt-4">
           <VncScreen
-            url={`ws://localhost:6080/websockify`}
+            url={`ws://localhost:${websockifyPort}/websockify`}
             scaleViewport
             background="#000000"
             style={{
-              width: '75vw',
-              height: '75vh',
+              width: "75vw",
+              height: "75vh",
             }}
             ref={ref}
           />
