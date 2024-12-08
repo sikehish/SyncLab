@@ -1,15 +1,16 @@
-import React, { useRef, useState } from "react";
-import { VncScreen } from "react-vnc";
+import React, { useState } from "react";
+import VNCdesktop from '../components/VNCdesktop';
 
 interface VNCResponse {
   websockifyPort: string;
+  roomId: string;
 }
+
 
 const App: React.FC = () => {
   const [websockifyPort, setWebsockifyPort] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string>("");
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
-  const ref = useRef();
 
   const handleRoomAction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,25 +60,12 @@ const App: React.FC = () => {
         </button>
       </form>
 
-      {createdRoomId && (
-        <p className="text-green-500">Created Room ID: {createdRoomId}</p>
-      )}
-
-      {websockifyPort ? (
-        <div className="mt-4">
-          <VncScreen
-            url={`ws://localhost:${websockifyPort}/websockify`}
-            scaleViewport
-            background="#000000"
-            style={{
-              width: "75vw",
-              height: "75vh",
-            }}
-            ref={ref}
-          />
-        </div>
-      ) : (
-        <p className="text-gray-500">No container running.</p>
+      {websockifyPort && (
+        <VNCdesktop
+          websockifyPort={websockifyPort}
+          createdRoomId={createdRoomId || ""}
+          roomId={roomId}
+        />
       )}
     </div>
   );
