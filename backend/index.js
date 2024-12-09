@@ -28,11 +28,27 @@ async function getNextAvailablePort() {
 }
 
 app.post("/api/new-instance", async (req, res) => {
+  const { userScript } = req.body; 
   try {
     const port = await getNextAvailablePort();
     const containerName = `ubuntu-vnc-instance-${Date.now()}`;
 
-    const runCommand = `docker run -d -p ${port}:6080 --name ${containerName} ubuntu-vnc-image`;
+    const scriptFilePath = `/tmp/user-script-${Date.now()}.sh`;
+    const fs = require("fs");
+    fs.writeFileSync(scriptFilePath, userScript);
+
+    const runCommand = userScript.trim() ? `
+  docker run -d -p ${port}:6080 --name ${containerName} \
+  --mount type=bind,source=${scriptFilePath},target=/tmp/user-script.sh \
+  ubuntu-vnc-image bash -c '
+  chmod +x /tmp/user-script.sh &&
+  /tmp/user-script.sh &&
+  dbus-daemon --session --fork &&
+  vncserver :1 -geometry 1280x800 -depth 24 &&
+  websockify 6080 localhost:5901 &&
+  bash /home/user/start-vscode.sh &&
+  tail -f /dev/null'` : `docker run -d -p ${port}:6080 --name ${containerName} ubuntu-vnc-image`;
+    
     exec(runCommand, async (error, stdout, stderr) => {
       if (error) {
         console.error(`Error starting container: ${error.message}`);
@@ -50,7 +66,6 @@ app.post("/api/new-instance", async (req, res) => {
       });
 
       console.log(`Container started: ${stdout}`);
-      console.log(`PORT: ${port}`);
       return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPort });
     });
   } catch (error) {
@@ -58,6 +73,7 @@ app.post("/api/new-instance", async (req, res) => {
     return res.status(500).send("Failed to create new instance");
   }
 });
+
 
 app.post("/api/join", async (req, res) => {
   const { roomId } = req.body;
@@ -79,7 +95,6 @@ app.post("/api/join", async (req, res) => {
 });
 
 
-//clean up 
 process.on("SIGINT", async () => {
   console.log("Server is shutting down. Cleaning up Docker containers...");
 

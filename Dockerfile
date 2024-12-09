@@ -7,7 +7,7 @@ ENV DISPLAY=:1 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-RUN apt-get update --fix-missing && apt-get install -y \
+    RUN apt-get update --fix-missing && apt-get install -y \
     mate-desktop-environment \
     ubuntu-mate-core \
     mate-terminal \
@@ -27,6 +27,7 @@ RUN apt-get update --fix-missing && apt-get install -y \
     gedit \
     pcmanfm \
     gvfs \
+    git \  
     xauth \
     xterm \
     libxshmfence1 \
@@ -43,6 +44,7 @@ RUN apt-get update --fix-missing && apt-get install -y \
     locale-gen en_US.UTF-8 && \
     apt-get remove -y blueman bluez bluez-cups bluez-obexd update-manager update-notifier update-notifier-common && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
 
 WORKDIR /home/user/Code
 
