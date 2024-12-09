@@ -11,6 +11,30 @@ const Meeting: React.FC = () => {
     navigate("/");
   };
 
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/download/${roomId}`, {
+        method: "GET",
+      });
+  
+      if (!response.ok) {
+        throw new Error("Failed to download files");
+      }
+  
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `CodeFiles-${roomId}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading files:", error);
+    }
+  };
+
   if (!websockifyPort || !roomId) {
     return <div>Invalid session. Please go back to Home.</div>;
   }
@@ -28,6 +52,13 @@ const Meeting: React.FC = () => {
       >
         Leave Meeting
       </button>
+
+      <button
+      className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4"
+      onClick={handleDownload}
+    >
+      Download
+    </button>
     </div>
   );
 };

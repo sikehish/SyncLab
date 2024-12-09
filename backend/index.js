@@ -3,6 +3,9 @@ const cors = require("cors");
 const { exec } = require("child_process");
 const morgan = require("morgan");
 const { PrismaClient } = require("@prisma/client");
+const path = require("path");
+const fs = require("fs");
+
 
 const app = express();
 const prisma = new PrismaClient();
@@ -93,6 +96,63 @@ app.post("/api/join", async (req, res) => {
     return res.status(500).send("Failed to join room");
   }
 });
+
+
+// download a file/folder from the container
+app.get("/api/download/:roomId", async (req, res) => {
+  const { roomId } = req.params;
+
+  try {
+    const containerName = `ubuntu-vnc-instance-${roomId}`;
+    const containerPath = "/home/user/CodeFiles";
+    const subdir = `${Date.now()}${Math.floor(Math.random() * 100)}`;
+    const localPath = path.join(__dirname, "downloads", roomId, subdir);
+
+    if (!fs.existsSync(localPath)) {
+      fs.mkdirSync(localPath, { recursive: true });
+    }
+
+    const copyCommand = `docker cp ${containerName}:${containerPath} ${localPath}`;
+    exec(copyCommand, (error) => {
+      if (error) {
+        console.error("Error copying files:", error);
+        return res.status(500).json({ error: "Failed to copy files from container" });
+      }
+
+      const zipFilePath = `${localPath}.zip`;
+      exec(`cd ${localPath} && zip -r ${zipFilePath} CodeFiles`, (zipError) => {
+        if (zipError) {
+          console.error("Error zipping files:", zipError);
+          return res.status(500).json({ error: "Failed to zip files" });
+        }
+
+        res.download(zipFilePath, `${roomId}.zip`, (downloadError) => {
+          if (downloadError) {
+            console.error("Error sending file:", downloadError);
+          }
+
+          fs.rmSync(localPath, { recursive: true, force: true });
+          fs.rmSync(zipFilePath, { force: true });
+
+          const roomDirPath = path.join(__dirname, "downloads", roomId);
+          if (fs.existsSync(roomDirPath) && fs.readdirSync(roomDirPath).length === 0) {
+            fs.rm(roomDirPath, { recursive: true }, (err)=>{
+              if(err){
+                console.log("ERR: ", error)
+                throw new Error(err)
+              }
+            });
+          }
+        });
+      });
+    });
+  } catch (error) {
+    console.error("Error handling download request:", error);
+    res.status(500).send("Internal server error");
+  }
+});
+
+
 
 
 process.on("SIGINT", async () => {
