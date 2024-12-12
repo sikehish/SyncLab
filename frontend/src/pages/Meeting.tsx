@@ -1,55 +1,70 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import VNCdesktop from "../components/VNCdesktop";
+import Loader from "../components/Loader";
 
 const Meeting: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { websockifyPort, roomId } = location.state || {};
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const handleLeaveMeeting = () => {
     navigate("/");
   };
 
-  const handleUpload = async () => {
-    if (fileInputRef.current && fileInputRef.current.files) {
+  const handleFileSelectAndUpload = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
       const formData = new FormData();
-      for (const file of fileInputRef.current.files) {
-        const relativePath = file.webkitRelativePath || file.name; // preserve relative paths
+      for (const file of files) {
+        const relativePath = file.webkitRelativePath || file.name;
         formData.append("files", file);
-        formData.append("relativePaths[]", relativePath); 
+        formData.append("relativePaths[]", relativePath);
       }
-  
+
       try {
+        setIsUploading(true);
+        toast.info("Uploading files, please wait...");
         const response = await fetch(`http://localhost:5000/api/upload/${roomId}`, {
           method: "POST",
           body: formData,
         });
-  
+
         if (!response.ok) {
           throw new Error("Failed to upload files");
         }
-  
-        alert("Upload successful!");
+
+        toast.success("Upload successful!");
       } catch (error) {
+        toast.error("Error uploading files. Please try again.");
         console.error("Error uploading files:", error);
+      } finally {
+        setIsUploading(false);
       }
     }
   };
-  
-  
 
   const handleDownload = async () => {
     try {
+      toast.info("Preparing your download...");
       const response = await fetch(`http://localhost:5000/api/download/${roomId}`, {
         method: "GET",
       });
-  
+
       if (!response.ok) {
         throw new Error("Failed to download files");
       }
-  
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -59,7 +74,9 @@ const Meeting: React.FC = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.success("Download completed!");
     } catch (error) {
+      toast.error("Error downloading files. Please try again.");
       console.error("Error downloading files:", error);
     }
   };
@@ -94,13 +111,15 @@ const Meeting: React.FC = () => {
         type="file"
         multiple
         webkitdirectory=""
-        className="mt-4"
+        className="hidden"
+        onChange={handleUpload}
       />
       <button
-        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mt-4"
-        onClick={handleUpload}
+        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mt-4 flex items-center justify-center"
+        onClick={handleFileSelectAndUpload}
       >
-        Upload
+        {isUploading && <Loader />}
+        {isUploading ? "Uploading..." : "Upload"}
       </button>
     </div>
   );

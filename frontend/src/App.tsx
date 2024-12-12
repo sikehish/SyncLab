@@ -4,10 +4,12 @@ import Home from "./pages/Home";
 import CreateRoom from "./pages/CreateRoom";
 import JoinRoom from "./pages/JoinRoom";
 import Meeting from "./pages/Meeting";
+import { ToastContainer } from "react-toastify";
 
 const App: React.FC = () => {
   return (
     <Router>
+      <ToastContainer />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/create-room" element={<CreateRoom />} />
