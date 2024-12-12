@@ -1,10 +1,13 @@
 const express = require("express");
 const cors = require("cors");
-const { exec } = require("child_process");
+const { exec, execSync } = require("child_process");
 const morgan = require("morgan");
 const { PrismaClient } = require("@prisma/client");
-const path = require("path");
 const fs = require("fs");
+const multer = require("multer");
+const path = require("path");
+
+const upload = multer({ dest: "uploads/" });
 
 
 const app = express();
@@ -152,8 +155,67 @@ app.get("/api/download/:roomId", async (req, res) => {
   }
 });
 
+app.post("/api/upload/:roomId", upload.any(), async (req, res) => {
+  const { roomId } = req.params;
+  const containerName = `ubuntu-vnc-instance-${roomId}`;
+  const containerBasePath = "/home/user/CodeFiles";
+  const relativePaths = req.body["relativePaths"]; 
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "No files uploaded" });
+    }
 
+    for (const [index, file] of req.files.entries()) {
+      const localFilePath = path.resolve(file.path);
+      const relativePath = relativePaths[index];
+      const containerFilePath = path.posix.join(containerBasePath, relativePath);
+      const containerDirPath = path.posix.dirname(containerFilePath);
 
+      console.log("Local File Path:", localFilePath);
+      console.log("Container File Path:", containerFilePath);
+      console.log("Container Dir Path:", containerDirPath);
+
+      exec(`docker exec ${containerName} mkdir -p "${containerDirPath}"`, (error, stdout, stderr) => {
+        if (error) {
+          console.error(`exec error: ${error}`);
+          return;
+        }
+        if (stderr) {
+          console.error(`stderr: ${stderr}`);
+          return;
+        }
+
+        console.log(`stdout: ${stdout}`);
+
+        const copyCommand = `docker cp "${localFilePath}" "${containerName}:${containerFilePath}"`;
+        exec(copyCommand, (error, stdout, stderr) => {
+          if (error) {
+            console.error(`exec error: ${error}`);
+            return;
+          }
+          if (stderr) {
+            console.error(`stderr: ${stderr}`);
+            return;
+          }
+
+          console.log(`stdout: ${stdout}`);
+          fs.unlink(localFilePath, (err) => {
+            if (err) {
+              console.error(`Error deleting file ${localFilePath}:`, err);
+            } else {
+              console.log(`File ${localFilePath} deleted successfully`);
+            }
+          });
+        });
+      });
+    }
+
+    res.status(200).json({ message: "Files and directories uploaded and deleted successfully" });
+  } catch (error) {
+    console.error("Error handling upload request:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 process.on("SIGINT", async () => {
   console.log("Server is shutting down. Cleaning up Docker containers...");
