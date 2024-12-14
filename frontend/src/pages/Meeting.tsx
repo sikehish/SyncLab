@@ -2,15 +2,33 @@ import React, { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { FaDownload, FaUpload, FaSignOutAlt } from "react-icons/fa";
 import VNCdesktop from "../components/VNCdesktop";
 import Loader from "../components/Loader";
+import {
+  LocalUser,
+  RemoteUser,
+  useIsConnected,
+  useJoin,
+  useLocalMicrophoneTrack,
+  useLocalCameraTrack,
+  usePublish,
+  useRemoteUsers,
+} from "agora-rtc-react";
+import { FaMicrophone, FaMicrophoneAltSlash, FaVideo, FaVideoSlash, FaPhoneAlt } from "react-icons/fa";
+import DefaultImage from "../assets/default_photo.png";
 
 const Meeting: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { websockifyPort, roomId } = location.state || {};
+  const { websockifyPort, roomId, token } = location.state || {};
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const isConnected = useIsConnected();
+  const appId = "78687755363a4287800e7b67be774e0f";
+
+  console.log("TOKEN: ", token)
+
 
   const handleLeaveMeeting = () => {
     navigate("/");
@@ -81,30 +99,104 @@ const Meeting: React.FC = () => {
     }
   };
 
+
+  useJoin({ appid: appId, channel: roomId, token: token }, true);
+
+  const [micOn, setMic] = useState(true);
+  const [cameraOn, setCamera] = useState(true);
+  const { localMicrophoneTrack } = useLocalMicrophoneTrack(micOn);
+  const { localCameraTrack } = useLocalCameraTrack(cameraOn);
+  usePublish([localMicrophoneTrack, localCameraTrack]);
+
+  const remoteUsers = useRemoteUsers();
+  console.log("REMOTE: ", remoteUsers)
+
   if (!websockifyPort || !roomId) {
     return <div>Invalid session. Please go back to Home.</div>;
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <h1 className="text-xl font-bold mb-4">Meeting Room: {roomId}</h1>
-      <div className="meeting-features">
-        <VNCdesktop websockifyPort={websockifyPort} roomId={roomId} />
-        <p className="text-gray-700 mt-4">Additional meeting features will appear here.</p>
+    <div className="relative w-full h-screen flex flex-col">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-100">
+        <div className="text-lg font-semibold text-gray-700">
+          Room ID: <span className="font-bold">{roomId}</span>
+        </div>
+        <div className="flex space-x-4">
+          {isConnected && <button
+              className="btn p-2 bg-gray-300 rounded-full hover:bg-gray-400"
+              onClick={() => setMic((prev) => !prev)}
+            >
+              {micOn ? <FaMicrophone size={24} /> : <FaMicrophoneAltSlash size={24} />}
+            </button>}
+            {isConnected && <button
+              className="btn p-2 bg-gray-300 rounded-full hover:bg-gray-400"
+              onClick={() => setCamera((prev) => !prev)}
+            >
+              {cameraOn ? <FaVideo size={24} /> : <FaVideoSlash size={24} />}
+            </button>}
+          <button
+            className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-700 transition"
+            onClick={handleDownload}
+            title="Download Files"
+          >
+            <FaDownload size={20} />
+          </button>
+          <button
+            className={`p-2 bg-green-500 text-white rounded-full hover:bg-green-700 transition ${
+              isUploading ? "opacity-75 cursor-not-allowed" : ""
+            }`}
+            onClick={handleFileSelectAndUpload}
+            disabled={isUploading}
+            title="Upload Files"
+          >
+            {isUploading ? <Loader /> : <FaUpload size={20} />}
+          </button>
+          <button
+            className="p-2 bg-red-500 text-white rounded-full hover:bg-red-700 transition"
+            onClick={handleLeaveMeeting}
+            title="Leave Meeting"
+          >
+            <FaSignOutAlt size={20} />
+          </button>
+        </div>
       </div>
-      <button
-        className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-4"
-        onClick={handleLeaveMeeting}
-      >
-        Leave Meeting
-      </button>
 
-      <button
-        className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mt-4"
-        onClick={handleDownload}
-      >
-        Download
-      </button>
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex-shrink-0 w-3/4">
+          <VNCdesktop websockifyPort={websockifyPort} roomId={roomId} />
+        </div>
+
+        <div className="flex flex-col w-1/4 overflow-y-auto">
+          <div className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg mb-4">
+            <LocalUser
+              audioTrack={localMicrophoneTrack}
+              cameraOn={cameraOn}
+              micOn={micOn}
+              videoTrack={localCameraTrack}
+              cover={DefaultImage}
+            >
+              <samp className="user-name text-center text-white absolute bottom-2 left-2 bg-opacity-50 bg-black px-2 py-1 rounded-md">
+                You
+              </samp>
+            </LocalUser>
+          </div>
+
+          <div className="">
+            {remoteUsers.map((user) => (
+              <div
+                className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg"
+                key={user.uid}
+              >
+                <RemoteUser cover={DefaultImage} user={user}>
+                  <samp className="user-name text-center text-white absolute bottom-2 left-2 bg-opacity-50 bg-black px-2 py-1 rounded-md">
+                    {user.uid}
+                  </samp>
+                </RemoteUser>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <input
         ref={fileInputRef}
@@ -114,13 +206,6 @@ const Meeting: React.FC = () => {
         className="hidden"
         onChange={handleUpload}
       />
-      <button
-        className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mt-4 flex items-center justify-center"
-        onClick={handleFileSelectAndUpload}
-      >
-        {isUploading && <Loader />}
-        {isUploading ? "Uploading..." : "Upload"}
-      </button>
     </div>
   );
 };

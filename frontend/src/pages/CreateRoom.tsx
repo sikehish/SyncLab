@@ -5,6 +5,37 @@ const CreateRoom: React.FC = () => {
   const [userScript, setUserScript] = useState<string>("");
   const navigate = useNavigate();
 
+  const fetchToken = async (roomId: string) => {
+    try {
+      const response = await fetch("http://localhost:5000/api/generate-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ channelName: roomId }),
+      });
+      const data = await response.json();
+      return data.token;
+    } catch (error) {
+      console.error("Error fetching token:", error);
+      return null;
+    }
+  };
+
+  async function handleJoin(roomId: string): Promise<string | null> {
+    if (roomId) {
+      const generatedToken = await fetchToken(roomId);
+      if (generatedToken)  return generatedToken; 
+       else {
+        alert("Failed to generate token. Please try again.");
+        return null;  
+      }
+    } else {
+      alert("Please enter a channel name.");
+      return null; 
+    }
+  };
+
   const handleCreateRoom = async () => {
     try {
       const response = await fetch("http://localhost:5000/api/new-instance", {
@@ -18,7 +49,8 @@ const CreateRoom: React.FC = () => {
       }
 
       const data = await response.json();
-      navigate("/meeting", { state: { websockifyPort: data.websockifyPort, roomId: data.roomId } });
+      const token = await handleJoin(data.roomId);
+       navigate("/meeting", { state: { websockifyPort: data.websockifyPort, roomId: data.roomId, token } });
     } catch (error) {
       console.error("Error creating room:", error);
     }

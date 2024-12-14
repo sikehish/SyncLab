@@ -12,8 +12,6 @@ interface props{
 function VNCdesktop({websockifyPort, createdRoomId, roomId}: props) {
     const ref = useRef();
         return (
-          <div className="mt-4">
-              <p>{createdRoomId ? `Created Room ID: ${createdRoomId}` :  `Room ID: ${roomId}`} </p>
             <VncScreen
               url={`ws://localhost:${websockifyPort}/websockify`} // Correctly use the string for websockifyPort
               scaleViewport
@@ -23,7 +21,6 @@ function VNCdesktop({websockifyPort, createdRoomId, roomId}: props) {
                 height: "75vh",
               }}
             />
-          </div>
         );    
 }
 

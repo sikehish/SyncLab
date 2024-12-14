@@ -1,3 +1,5 @@
+// !!NOTE: THIS ISNT BEING USED; WAS JUST TO TEST OUT THE FUNCTIONALITY
+
 import {
   LocalUser,
   RemoteUser,
@@ -12,7 +14,7 @@ import { useState } from "react";
 import { FaMicrophone, FaMicrophoneAltSlash, FaVideo, FaVideoSlash, FaPhoneAlt, FaPhone } from "react-icons/fa";
 import DefaultImage from "../../assets/default_photo.png";
 
-export const Basics = () => {
+export const VideoCall = () => {
   const fetchToken = async (channelName: string) => {
     try {
       const response = await fetch("http://localhost:5000/api/generate-token", {
@@ -65,7 +67,6 @@ export const Basics = () => {
       <div className="room p-4">
         {isConnected ? (
           <div className="user-list grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Local user stream */}
             <div className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg">
               <LocalUser
                 audioTrack={localMicrophoneTrack}
@@ -80,7 +81,6 @@ export const Basics = () => {
               </LocalUser>
             </div>
 
-            {/* Remote user streams */}
             {remoteUsers.map((user) => (
               <div className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg" key={user.uid}>
                 <RemoteUser cover={DefaultImage} user={user}>
@@ -138,4 +138,4 @@ export const Basics = () => {
   );
 };
 
-export default Basics;
+export default VideoCall;
