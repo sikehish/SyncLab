@@ -9,7 +9,7 @@ const Home: React.FC = () => {
       <h1 className="text-2xl font-bold mb-4">Welcome to VNC Room Manager</h1>
       <button
         className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mb-4"
-        onClick={() => navigate("/create-room")}
+        onClick={() => navigate("/video")}
       >
         Create a New Room
       </button>

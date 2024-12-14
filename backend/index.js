@@ -2,9 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const { exec, execSync } = require("child_process");
 const morgan = require("morgan");
+const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
 const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
 const multer = require("multer");
+const dotenv=require("dotenv").config()
 const path = require("path");
 
 const upload = multer({ dest: "uploads/" });
@@ -215,6 +217,31 @@ app.post("/api/upload/:roomId", upload.any(), async (req, res) => {
     console.error("Error handling upload request:", error);
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+
+const APP_ID = process.env.APP_ID ;
+const APP_CERTIFICATE = process.env.APP_CERTIFICATE;
+// token generation server
+app.post("/api/generate-token", (req, res) => {
+  const { channelName } = req.body;
+
+  if (!channelName) {
+    return res.status(400).json({ error: "Channel name is required" });
+  }
+
+  const role = RtcRole.PUBLISHER;
+  const expireTime = Math.floor(Date.now() / 1000) + 3600; 
+  const token = RtcTokenBuilder.buildTokenWithUid(
+    APP_ID,
+    APP_CERTIFICATE,
+    channelName,
+    0,
+    role,
+    expireTime
+  );
+
+  return res.json({ token });
 });
 
 process.on("SIGINT", async () => {
