@@ -6,12 +6,12 @@ const Navbar: React.FC = () => {
     <nav className="bg-gray-900 text-white shadow-lg">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
-          {/* Logo */}
           <div className="flex items-center">
             <Link to="/" className="text-2xl font-bold text-blue-500">
               SyncLab
             </Link>
           </div>
+
           <div className="hidden md:flex space-x-4">
             <NavLink
               to="/"
@@ -23,26 +23,29 @@ const Navbar: React.FC = () => {
             >
               Home
             </NavLink>
-            <NavLink
-              to="/create-room"
-              className={({ isActive }) =>
-                isActive
-                  ? "text-blue-400 font-medium"
-                  : "text-gray-300 hover:text-blue-400"
-              }
-            >
-              Create Room
-            </NavLink>
-            <NavLink
-              to="/join-room"
-              className={({ isActive }) =>
-                isActive
-                  ? "text-blue-400 font-medium"
-                  : "text-gray-300 hover:text-blue-400"
-              }
-            >
-              Join Room
-            </NavLink>
+
+            <SignedIn>
+              <NavLink
+                to="/create-room"
+                className={({ isActive }) =>
+                  isActive
+                    ? "text-blue-400 font-medium"
+                    : "text-gray-300 hover:text-blue-400"
+                }
+              >
+                Create Room
+              </NavLink>
+              <NavLink
+                to="/join-room"
+                className={({ isActive }) =>
+                  isActive
+                    ? "text-blue-400 font-medium"
+                    : "text-gray-300 hover:text-blue-400"
+                }
+              >
+                Join Room
+              </NavLink>
+            </SignedIn>
           </div>
 
           <div className="flex items-center space-x-4">
@@ -54,6 +57,7 @@ const Navbar: React.FC = () => {
                 Login
               </Link>
             </SignedOut>
+
             <SignedIn>
               <UserButton
                 appearance={{
