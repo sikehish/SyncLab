@@ -62,7 +62,7 @@ npm run dev
 ## Technologies Used
 - **Frontend**: React.js, Tailwind CSS
 - **Backend**: Node.js, Express, Docker
-- **Database**: PostgreSQL
+- **Database**: PostgreSQL, Redis
 - **Authentication**: Clerk for user authentication
 - **Realtime Communication**: Agora SDK
 
