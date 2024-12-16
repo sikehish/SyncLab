@@ -184,7 +184,7 @@ export default function HomeContent() {
 
       <footer className="bg-gray-900 text-white py-8 mt-24">
           <footer className="border-gray-800 text-center text-gray-400">
-            <p>&copy; 2024 Synclab. All rights reserved.</p>
+            <p>&copy; 2024 SyncLab. All rights reserved.</p>
           </footer>
       </footer>
     </div>
