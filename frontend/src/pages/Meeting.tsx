@@ -17,6 +17,8 @@ import {
 } from "agora-rtc-react";
 import { FaMicrophone, FaMicrophoneAltSlash, FaVideo, FaVideoSlash, FaPhoneAlt } from "react-icons/fa";
 import DefaultImage from "../assets/default_photo.png";
+import { useUser } from "@clerk/clerk-react";
+
 
 const Meeting: React.FC = () => {
   const location = useLocation();
@@ -26,6 +28,8 @@ const Meeting: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const isConnected = useIsConnected();
   const appId = "78687755363a4287800e7b67be774e0f";
+  const { user } = useUser();
+  const username = user?.username || user?.fullName || "Guest";
 
   console.log("TOKEN: ", token)
 

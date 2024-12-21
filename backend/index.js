@@ -232,6 +232,37 @@ app.post("/api/generate-token", (req, res) => {
   return res.json({ token });
 });
 
+
+app.get("/api/getUsername/:uid", async (req, res) => {
+  const uid = req.params.uid;
+
+  try {
+    // Fetch username from Redis using the uid
+    const username = await redis.get(uid);
+
+    if (username) {
+      res.json({ username });
+    } else {
+      res.status(404).json({ error: "Username not found" });
+    }
+  } catch (error) {
+    console.error("Error fetching from Redis:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/api/setUsername/:uid/:username", async (req, res) => {
+  const { uid, username } = req.params;
+
+  try {
+    await redis.set(uid, username);
+    res.json({ message: "Username set successfully" });
+  } catch (error) {
+    console.error("Error saving to Redis:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 process.on("SIGINT", async () => {
   console.log("Server is shutting down. Cleaning up Docker containers...");
 

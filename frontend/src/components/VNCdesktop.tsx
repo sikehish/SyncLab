@@ -1,27 +1,34 @@
-import { useRef } from 'react'
+import { useRef } from 'react';
 import { VncScreen } from 'react-vnc';
 
 
-interface props{
-    websockifyPort: number;
-    createdRoomId: string
-    roomId: string
+interface Props {
+  websockifyPort: number;
+  createdRoomId: string;
+  roomId: string;
 }
 
+function VNCdesktop({ websockifyPort, createdRoomId, roomId }: Props) {
+  const ref = useRef();
 
-function VNCdesktop({websockifyPort, createdRoomId, roomId}: props) {
-    const ref = useRef();
-        return (
-            <VncScreen
-              url={`ws://localhost:${websockifyPort}/websockify`} // Correctly use the string for websockifyPort
-              scaleViewport
-              background="#000000"
-              style={{
-                width: "75vw",
-                height: "75vh",
-              }}
-            />
-        );    
+  return (
+    <VncScreen
+      url={`ws://localhost:${websockifyPort}/websockify`} // Dynamically set the WebSocket URL
+      scaleViewport
+      background="#000000"
+      style={{
+        width: "75vw",
+        height: "75vh",
+      }}
+      rfbOptions={{
+        shared: true,
+        credentials: {
+          username: "user",
+          password: "password",
+        },
+      }}
+    />
+  );
 }
 
-export default VNCdesktop
+export default VNCdesktop;
