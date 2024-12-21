@@ -7,7 +7,6 @@ Collaborate in real-time with integrated coding, whiteboard brainstorming, and s
 - **Whiteboard Integration:** Brainstorm ideas visually with an integrated whiteboard feature.
 - **File Sharing:** Seamlessly upload, download, and share files within your project.
 - **Dedicated Spaces:** Create rooms for focused collaboration with dynamic configurations tailored for developers.
-- **Developer Interviews:** A perfect platform for conducting and participating in technical interviews.
 
 ## System Design
 ![System Design Diagram](https://github.com/user-attachments/assets/48a57a6c-9f77-4f5d-84fb-b42d2081b202)
@@ -70,5 +69,5 @@ npm run dev
 We welcome contributions from the community! Feel free to fork the repository and submit a pull request with your changes.
 
 ## License
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under a custom license. See the `LICENSE` file for details.
 
