@@ -47,11 +47,12 @@ npm install
 ```bash
 # In the frontend directory
 cd frontend
-npm start
+npm run dev
 
 # In the backend directory
 cd ../backend
-npm run dev
+npm start
+
 ```
 3. Open your browser and navigate to:
    - Frontend: `http://localhost:3000`
