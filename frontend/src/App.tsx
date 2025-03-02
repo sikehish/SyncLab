@@ -10,6 +10,7 @@ import ConditionalNavbar from "./components/ConditionalNavbar";
 import Signup from "./pages/Signup";
 import ProtectedRoute from "./utils/ProtectedRoute";
 import UnauthenticatedRoute from "./utils/UnauthenticatedRoute";
+import TempDashboard from "./pages/TempDashboard";
 
 const App: React.FC = () => {
   return (
@@ -27,6 +28,14 @@ const App: React.FC = () => {
       </UnauthenticatedRoute>
     }
   />
+   <Route
+          path="/registering"
+          element={
+            <ProtectedRoute>
+              <TempDashboard />
+            </ProtectedRoute>
+          }
+        />
   <Route
     path="/signup"
     element={
