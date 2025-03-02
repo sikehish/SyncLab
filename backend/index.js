@@ -22,28 +22,70 @@ app.use(morgan("dev"));
 app.use(cors());
 app.use(express.json());
 
+app.post("/api/register", async (req, res) => {
+  const { clerkId, email, name } = req.body;
+
+  try {
+    let user = await prisma.user.findUnique({ where: { clerkId } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: { clerkId, email, name },
+      });
+    }else {
+      return res.status(200).json({message: "User is already registered!"})
+    }
+
+    res.status(201).json({ message: "User registered successfully", user });
+  } catch (error) {
+    console.error("Error registering user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 app.post("/api/new-instance", async (req, res) => {
-  const { userScript } = req.body; 
+  const { userScript, clerkId, snapshotName } = req.body; 
   try {
     const port = await getNextAvailablePort();
     const containerName = `ubuntu-vnc-instance-${Date.now()}`;
 
-    const scriptFilePath = `/tmp/user-script-${Date.now()}.sh`;
-    const fs = require("fs");
-    fs.writeFileSync(scriptFilePath, userScript);
+    let user = await prisma.user.findUnique({ where: { clerkId } });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    let snapshot = null;
+    if (snapshotName) {
+      snapshot = await prisma.snapshot.findUnique({
+        where: { name: snapshotName, userId: user.id },
+      });
+
+      if (!snapshot) {
+        return res.status(404).json({ error: "Snapshot not found" });
+      }
+    }
+
+    let scriptFilePath = "";
+
+    if (userScript.trim()) {
+      scriptFilePath = `/tmp/user-script-${Date.now()}.sh`;
+      fs.writeFileSync(scriptFilePath, userScript);
+    }
+
+
+    const baseImage = snapshot ? snapshot.imageName : "ubuntu-vnc-image";
 
     const runCommand = userScript.trim() ? `
   docker run -d -p ${port}:6080 --name ${containerName} \
   --mount type=bind,source=${scriptFilePath},target=/tmp/user-script.sh \
-  ubuntu-vnc-image bash -c '
+  ${baseImage} bash -c '
   chmod +x /tmp/user-script.sh &&
   /tmp/user-script.sh &&
   dbus-daemon --session --fork &&
   vncserver :1 -geometry 1280x800 -depth 24 &&
   websockify 6080 localhost:5901 &&
   bash /home/user/start-vscode.sh &&
-  tail -f /dev/null'` : `docker run -d -p ${port}:6080 --name ${containerName} ubuntu-vnc-image`;
+  tail -f /dev/null'` : `docker run -d -p ${port}:6080 --name ${containerName} ${baseImage}`;
     
     exec(runCommand, async (error, stdout, stderr) => {
       if (error) {
@@ -58,11 +100,12 @@ app.post("/api/new-instance", async (req, res) => {
           roomId,
           containerName,
           websockifyPort: port,
+          userId: user.id
         },
       });
 
       console.log(`Container started: ${stdout}`);
-      return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPort });
+      return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPort,  userId: user.id });
     });
   } catch (error) {
     console.error("Error creating new instance:", error);
@@ -89,6 +132,7 @@ app.post("/api/join", async (req, res) => {
     return res.status(500).send("Failed to join room");
   }
 });
+
 
 
 // download a file/folder from the container

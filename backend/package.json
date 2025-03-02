@@ -1,6 +1,7 @@
 {
   "dependencies": {
-    "@prisma/client": "^6.0.1",
+    "@clerk/types": "^4.47.0",
+    "@prisma/client": "^6.4.1",
     "agora-access-token": "^2.0.4",
     "agora-token": "^2.0.3",
     "archiver": "^7.0.1",
