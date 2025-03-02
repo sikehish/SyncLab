@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { FaDownload, FaUpload, FaSignOutAlt } from "react-icons/fa";
+import { MdScreenshotMonitor } from "react-icons/md";
 import VNCdesktop from "../components/VNCdesktop";
 import Loader from "../components/Loader";
 import {
@@ -26,6 +27,7 @@ const Meeting: React.FC = () => {
   const { websockifyPort, roomId, token } = location.state || {};
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
   const isConnected = useIsConnected();
   const appId = "78687755363a4287800e7b67be774e0f";
   const { user } = useUser();
@@ -103,6 +105,36 @@ const Meeting: React.FC = () => {
     }
   };
 
+  const handleCaptureSnapshot = async () => {
+    if (!roomId || !user?.id) {
+      toast.error("Invalid room or user. Please try again.");
+      return;
+    }
+  
+    try {
+      setIsCapturingSnapshot(true);
+      toast.info("Capturing snapshot, please wait...");
+  
+      const response = await fetch(`http://localhost:5000/api/snapshot/${roomId}/${user.id}`, {
+        method: "POST",
+      });
+  
+      if (!response.ok) {
+        throw new Error("Failed to capture snapshot");
+      }
+  
+      const data = await response.json();
+      toast.success("Snapshot captured successfully!");
+      console.log("Snapshot data:", data);
+    } catch (error) {
+      toast.error("Error capturing snapshot. Please try again.");
+      console.error("Error capturing snapshot:", error);
+    } finally {
+      setIsCapturingSnapshot(false);
+    }
+  };
+  
+
 
   useJoin({ appid: appId, channel: roomId, token: token }, true);
 
@@ -155,6 +187,17 @@ const Meeting: React.FC = () => {
           >
             {isUploading ? <Loader /> : <FaUpload size={20} />}
           </button>
+          <button
+            className={`p-2 bg-blue-500 text-white rounded-full hover:bg-blue-700 transition ${
+              isUploading ? "opacity-75 cursor-not-allowed" : ""
+            }`}
+            onClick={handleCaptureSnapshot}
+            disabled={isCapturingSnapshot}
+            title="Take OS snapshot"
+          >
+            {isCapturingSnapshot ? <Loader /> : <MdScreenshotMonitor size={20} />}
+          </button>
+          
           <button
             className="p-2 bg-red-500 text-white rounded-full hover:bg-red-700 transition"
             onClick={handleLeaveMeeting}
