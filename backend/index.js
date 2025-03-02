@@ -57,7 +57,7 @@ app.post("/api/new-instance", async (req, res) => {
     let snapshot = null;
     if (snapshotName) {
       snapshot = await prisma.snapshot.findUnique({
-        where: { name: snapshotName, userId: user.id },
+        where: { snapshotName: snapshotName, userId: user.id },
       });
 
       if (!snapshot) {
@@ -73,19 +73,28 @@ app.post("/api/new-instance", async (req, res) => {
     }
 
 
-    const baseImage = snapshot ? snapshot.imageName : "ubuntu-vnc-image";
+    const baseImage = snapshot ? snapshotName : "ubuntu-vnc-image";
 
-    const runCommand = userScript.trim() ? `
-  docker run -d -p ${port}:6080 --name ${containerName} \
-  --mount type=bind,source=${scriptFilePath},target=/tmp/user-script.sh \
-  ${baseImage} bash -c '
-  chmod +x /tmp/user-script.sh &&
-  /tmp/user-script.sh &&
-  dbus-daemon --session --fork &&
-  vncserver :1 -geometry 1280x800 -depth 24 &&
-  websockify 6080 localhost:5901 &&
-  bash /home/user/start-vscode.sh &&
-  tail -f /dev/null'` : `docker run -d -p ${port}:6080 --name ${containerName} ${baseImage}`;
+    const runCommand = userScript.trim()
+    ? `docker run -d -p ${port}:6080 --name ${containerName} \
+    --mount type=bind,source=${scriptFilePath},target=/tmp/user-script.sh \
+    ${baseImage} bash -c '
+    rm -rf /tmp/.X1-lock /tmp/.X11-unix/X1;
+    chmod +x /tmp/user-script.sh &&
+    /tmp/user-script.sh &&
+    dbus-daemon --session --fork &&
+    vncserver :1 -geometry 1280x800 -depth 24 &&
+    websockify 6080 localhost:5901 &&
+    bash /home/user/start-vscode.sh &&
+    tail -f /dev/null'`
+    : `docker run -d -p ${port}:6080 --name ${containerName} ${baseImage} bash -c '
+    rm -rf /tmp/.X1-lock /tmp/.X11-unix/X1;
+    dbus-daemon --session --fork &&
+    vncserver :1 -geometry 1280x800 -depth 24 &&
+    websockify 6080 localhost:5901 &&
+    bash /home/user/start-vscode.sh &&
+    tail -f /dev/null'`;
+  
     
     exec(runCommand, async (error, stdout, stderr) => {
       if (error) {
@@ -104,7 +113,7 @@ app.post("/api/new-instance", async (req, res) => {
         },
       });
 
-      console.log(`Container started: ${stdout}`);
+      console.log(`Container started: ${stderr}`);
       return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPort,  userId: user.id });
     });
   } catch (error) {
@@ -145,10 +154,8 @@ app.get("/api/snapshots/:clerkId", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
-
     const snapshots = await prisma.snapshot.findMany({
       where: { userId: user.id },
-      select: { snapshotName: true },
     });
 
     return res.status(200).json(snapshots);
