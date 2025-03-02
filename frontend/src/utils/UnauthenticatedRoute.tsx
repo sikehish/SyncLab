@@ -4,7 +4,7 @@ import { Navigate } from "react-router-dom";
 const UnauthenticatedRoute: React.FC<{  children: JSX.Element;}> = ({ children }) => {
     const { isSignedIn } = useAuth();
   
-    return !isSignedIn ? children : <Navigate to="/" replace />;
+    return !isSignedIn ? children : <Navigate to="/registering" replace />;
   };
   
   export default UnauthenticatedRoute;

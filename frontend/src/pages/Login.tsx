@@ -10,7 +10,12 @@ export default function Login() {
         <p className="text-gray-600 text-center mb-6">
           Please sign in to continue.
         </p>
-        <SignIn routing="path" path="/login" signUpUrl="/signup" />
+        <SignIn
+          routing="path"
+          path="/login"
+          signUpUrl="/signup"
+          forceRedirectUrl="/registering" 
+        />
       </div>
     </div>
   );
