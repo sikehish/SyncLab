@@ -1,22 +1,38 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
   provider = "prisma-client-js"
 }
 
+
 datasource db {
-  provider  = "postgresql"
-  url  	    = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+model User {
+  id        Int        @id @default(autoincrement())
+  clerkId   String     @unique // clerk authentication ID
+  email     String     @unique
+  name      String
+  createdAt DateTime   @default(now())
+  snapshots Snapshot[]
+  Room      Room[]
+}
 model Room {
-  id           Int     @id @default(autoincrement())
-  roomId       String  @unique
-  containerName String
-  websockifyPort      Int
-  createdAt    DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  roomId         String   @unique
+  containerName  String
+  websockifyPort Int
+  createdAt      DateTime @default(now())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Snapshot {
+  id            Int      @id @default(autoincrement())
+  snapshotName  String   @unique // name used for the Docker image
+  containerName String   @unique //  original container it was created from
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
 }
