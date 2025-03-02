@@ -133,6 +133,80 @@ app.post("/api/join", async (req, res) => {
   }
 });
 
+//get all snapshots(to be displayed while creating the room)
+app.get("/api/snapshots/:clerkId", async (req, res) => {
+  const { clerkId } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const snapshots = await prisma.snapshot.findMany({
+      where: { userId: user.id },
+      select: { snapshotName: true },
+    });
+
+    return res.status(200).json(snapshots);
+  } catch (error) {
+    console.error("Error fetching snapshots:", error);
+    return res.status(500).json({ error: "Failed to fetch snapshots" });
+  }
+});
+
+//Take a snapshot
+app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
+  const { roomId, clerkId } = req.params;
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+      include: { user: true },
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const { containerName } = room;
+    const snapshotName = `snapshot-${user.id}-${Date.now()}`;
+
+    const command = `docker commit ${containerName} ${snapshotName}`;
+
+    exec(command, async (error, stdout, stderr) => {
+      if (error) {
+        console.error("Error creating snapshot:", stderr);
+        return res.status(500).json({ error: "Failed to create snapshot" });
+      }
+
+      const snapshot = await prisma.snapshot.create({
+        data: {
+          snapshotName,
+          containerName,
+          userId: user.id,
+        },
+      });
+
+      console.log(`Snapshot created: ${stdout}`);
+      return res.status(200).json({ message: "Snapshot created successfully", snapshot });
+    });
+  } catch (error) {
+    console.error("Error taking snapshot:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 
 // download a file/folder from the container
