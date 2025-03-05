@@ -1,7 +1,8 @@
 const { exec } = require("child_process");
+const path = require("path");
 
 const imageName = "ubuntu-vnc-image"; 
-const dockerfilePath="/home/sikehish/CodeFiles/SyncLab/"
+const dockerfilePath = path.resolve(__dirname, ".."); 
 console.log("Building Docker image...");
 exec(`docker build -t ${imageName} ${dockerfilePath}`, (error, stdout, stderr) => {
     if (error) {
