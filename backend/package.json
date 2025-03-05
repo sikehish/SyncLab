@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@clerk/types": "^4.47.0",
+    "@google/generative-ai": "^0.23.0",
     "@prisma/client": "^6.4.1",
     "agora-access-token": "^2.0.4",
     "agora-token": "^2.0.3",

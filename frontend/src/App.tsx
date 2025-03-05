@@ -11,6 +11,7 @@ import Signup from "./pages/Signup";
 import ProtectedRoute from "./utils/ProtectedRoute";
 import UnauthenticatedRoute from "./utils/UnauthenticatedRoute";
 import TempDashboard from "./pages/TempDashboard";
+import Chatbot from "./components/Chatbot";
 
 const App: React.FC = () => {
   return (
@@ -70,6 +71,7 @@ const App: React.FC = () => {
     }
   />
 </Routes>
+<Chatbot />
     </Router>
   );
 };

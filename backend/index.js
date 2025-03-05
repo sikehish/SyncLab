@@ -10,6 +10,11 @@ const dotenv=require("dotenv").config()
 const path = require("path");
 const { initializePorts, getNextAvailablePort, redis } = require("./utils/portManagement");
 const { default: Redis } = require("ioredis");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
 
 const upload = multer({ dest: "uploads/" });
 initializePorts(); //initializes a pool of available ports
@@ -434,4 +439,33 @@ async function execPromise(command) {
 
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
+});
+
+/* CHATBOT API(s) */
+
+app.get("/api/chat", async (req, res) => {
+  try {
+    const prompt = req.query.prompt;
+    if (!prompt) {
+      return res.status(400).json({ error: "Prompt is required" });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    const result = await model.generateContentStream(prompt);
+
+    for await (const chunk of result.stream) {
+      if (chunk.text()) {
+        res.write(`data: ${chunk.text()}\n\n`);
+      }
+    }
+
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (error) {
+    console.error("Error generating response:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
