@@ -24,7 +24,7 @@ import { useUser } from "@clerk/clerk-react";
 const Meeting: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { websockifyPort, roomId, token } = location.state || {};
+  const { websockifyPort: initialPort, roomId, token } = location.state || {};
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
@@ -32,9 +32,10 @@ const Meeting: React.FC = () => {
   const appId = "78687755363a4287800e7b67be774e0f";
   const { user } = useUser();
   const username = user?.username || user?.fullName || "Guest";
+  const [websockifyPort, setWebsockifyPort] = useState(initialPort);
+  const [workspaceId, setWorkspaceId] = useState(1);
 
   console.log("TOKEN: ", token)
-
 
   const handleLeaveMeeting = () => {
     navigate("/");
@@ -133,7 +134,28 @@ const Meeting: React.FC = () => {
       setIsCapturingSnapshot(false);
     }
   };
-  
+
+  const switchWorkspace = async (newWorkspaceId: number) => {
+    try {
+      const response = await fetch("http://localhost:5000/api/switch-workspace", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ roomId, workspaceId: newWorkspaceId }),
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to switch workspace");
+      }
+      
+      const data = await response.json();
+      setWebsockifyPort(data.websockifyPort);
+      setWorkspaceId(newWorkspaceId);
+    } catch (error) {
+      console.error("Error switching workspace:", error);
+    }
+  };
 
 
   useJoin({ appid: appId, channel: roomId, token: token }, true);
@@ -150,62 +172,84 @@ const Meeting: React.FC = () => {
   if (!websockifyPort || !roomId) {
     return <div>Invalid session. Please go back to Home.</div>;
   }
-
+  console.log(user?.fullName, workspaceId, websockifyPort)
   return (
     <div className="relative w-full h-screen flex flex-col">
       <div className="flex items-center justify-between px-4 py-2 bg-gray-100">
         <div className="text-lg font-semibold text-gray-700">
           Room ID: <span className="font-bold">{roomId}</span>
         </div>
-        <div className="flex space-x-4">
-          {isConnected && <button
-              className="btn p-2 bg-gray-300 rounded-full hover:bg-gray-400"
-              onClick={() => setMic((prev) => !prev)}
-            >
-              {micOn ? <FaMicrophone size={24} /> : <FaMicrophoneAltSlash size={24} />}
-            </button>}
-            {isConnected && <button
-              className="btn p-2 bg-gray-300 rounded-full hover:bg-gray-400"
-              onClick={() => setCamera((prev) => !prev)}
-            >
-              {cameraOn ? <FaVideo size={24} /> : <FaVideoSlash size={24} />}
-            </button>}
-          <button
-            className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-700 transition"
-            onClick={handleDownload}
-            title="Download Files"
-          >
-            <FaDownload size={20} />
-          </button>
-          <button
-            className={`p-2 bg-green-500 text-white rounded-full hover:bg-green-700 transition ${
-              isUploading ? "opacity-75 cursor-not-allowed" : ""
-            }`}
-            onClick={handleFileSelectAndUpload}
-            disabled={isUploading}
-            title="Upload Files"
-          >
-            {isUploading ? <Loader /> : <FaUpload size={20} />}
-          </button>
-          <button
-            className={`p-2 bg-blue-500 text-white rounded-full hover:bg-blue-700 transition ${
-              isUploading ? "opacity-75 cursor-not-allowed" : ""
-            }`}
-            onClick={handleCaptureSnapshot}
-            disabled={isCapturingSnapshot}
-            title="Take OS snapshot"
-          >
-            {isCapturingSnapshot ? <Loader /> : <MdScreenshotMonitor size={20} />}
-          </button>
-          
-          <button
-            className="p-2 bg-red-500 text-white rounded-full hover:bg-red-700 transition"
-            onClick={handleLeaveMeeting}
-            title="Leave Meeting"
-          >
-            <FaSignOutAlt size={20} />
-          </button>
-        </div>
+        <div className="flex items-center space-x-4">
+  <div className="flex items-center space-x-2">
+    <label htmlFor="workspace" className="text-sm font-medium">Switch Workspace:</label>
+    <select
+      id="workspace"
+      value={workspaceId}
+      onChange={(e) => switchWorkspace(parseInt(e.target.value))}
+      className="p-2 border border-gray-300 rounded-md focus:ring focus:ring-blue-300"
+    >
+      <option value={1}>Default Workspace</option>
+      <option value={2}>Workspace 2</option>
+    </select>
+  </div>
+
+  {isConnected && (
+    <button
+      className="p-2 bg-gray-300 rounded-full hover:bg-gray-400 transition"
+      onClick={() => setMic((prev) => !prev)}
+    >
+      {micOn ? <FaMicrophone size={24} /> : <FaMicrophoneAltSlash size={24} />}
+    </button>
+  )}
+
+  {isConnected && (
+    <button
+      className="p-2 bg-gray-300 rounded-full hover:bg-gray-400 transition"
+      onClick={() => setCamera((prev) => !prev)}
+    >
+      {cameraOn ? <FaVideo size={24} /> : <FaVideoSlash size={24} />}
+    </button>
+  )}
+
+  <button
+    className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-700 transition"
+    onClick={handleDownload}
+    title="Download Files"
+  >
+    <FaDownload size={20} />
+  </button>
+
+  <button
+    className={`p-2 bg-green-500 text-white rounded-full hover:bg-green-700 transition ${
+      isUploading ? "opacity-75 cursor-not-allowed" : ""
+    }`}
+    onClick={handleFileSelectAndUpload}
+    disabled={isUploading}
+    title="Upload Files"
+  >
+    {isUploading ? <Loader /> : <FaUpload size={20} />}
+  </button>
+
+  <button
+    className={`p-2 bg-blue-500 text-white rounded-full hover:bg-blue-700 transition ${
+      isCapturingSnapshot ? "opacity-75 cursor-not-allowed" : ""
+    }`}
+    onClick={handleCaptureSnapshot}
+    disabled={isCapturingSnapshot}
+    title="Take OS Snapshot"
+  >
+    {isCapturingSnapshot ? <Loader /> : <MdScreenshotMonitor size={20} />}
+  </button>
+
+  <button
+    className="p-2 bg-red-500 text-white rounded-full hover:bg-red-700 transition"
+    onClick={handleLeaveMeeting}
+    title="Leave Meeting"
+  >
+    <FaSignOutAlt size={20} />
+  </button>
+</div>
+
       </div>
 
       <div className="flex flex-1 overflow-hidden">

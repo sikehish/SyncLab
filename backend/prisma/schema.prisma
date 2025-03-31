@@ -22,7 +22,7 @@ model Room {
   id             Int      @id @default(autoincrement())
   roomId         String   @unique
   containerName  String
-  websockifyPort Int
+  websockifyPorts Int[]
   createdAt      DateTime @default(now())
   userId         Int
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)

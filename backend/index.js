@@ -8,7 +8,7 @@ const fs = require("fs");
 const multer = require("multer");
 const dotenv=require("dotenv").config()
 const path = require("path");
-const { initializePorts, getNextAvailablePort, redis } = require("./utils/portManagement");
+const { initializePorts, getNextAvailablePorts, redis, releasePorts } = require("./utils/portManagement");
 const { default: Redis } = require("ioredis");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -49,9 +49,9 @@ app.post("/api/register", async (req, res) => {
 
 
 app.post("/api/new-instance", async (req, res) => {
-  const { userScript, clerkId, snapshotName } = req.body; 
+  const { userScript, clerkId, snapshotName } = req.body;
   try {
-    const port = await getNextAvailablePort();
+    const ports = await getNextAvailablePorts(); 
     const containerName = `ubuntu-vnc-instance-${Date.now()}`;
 
     let user = await prisma.user.findUnique({ where: { clerkId } });
@@ -64,62 +64,45 @@ app.post("/api/new-instance", async (req, res) => {
       snapshot = await prisma.snapshot.findUnique({
         where: { snapshotName: snapshotName, userId: user.id },
       });
-
       if (!snapshot) {
         return res.status(404).json({ error: "Snapshot not found" });
       }
     }
 
     let scriptFilePath = "";
-
     if (userScript.trim()) {
       scriptFilePath = `/tmp/user-script-${Date.now()}.sh`;
       fs.writeFileSync(scriptFilePath, userScript);
     }
 
-
     const baseImage = snapshot ? snapshotName : "ubuntu-vnc-image";
 
-    const runCommand = userScript.trim()
-    ? `docker run -d -p ${port}:6080 --name ${containerName} \
-    --mount type=bind,source=${scriptFilePath},target=/tmp/user-script.sh \
-    ${baseImage} bash -c '
-    rm -rf /tmp/.X1-lock /tmp/.X11-unix/X1;
-    chmod +x /tmp/user-script.sh &&
-    /tmp/user-script.sh &&
-    dbus-daemon --session --fork &&
-    vncserver :1 -geometry 1280x800 -depth 24 &&
-    websockify 6080 localhost:5901 &&
-    bash /home/user/start-vscode.sh &&
-    tail -f /dev/null'`
-    : `docker run -d -p ${port}:6080 --name ${containerName} ${baseImage} bash -c '
-    rm -rf /tmp/.X1-lock /tmp/.X11-unix/X1;
-    dbus-daemon --session --fork &&
-    vncserver :1 -geometry 1280x800 -depth 24 &&
-    websockify 6080 localhost:5901 &&
-    bash /home/user/start-vscode.sh &&
-    tail -f /dev/null'`;
-  
-    
+    const runCommand = `docker run -d \
+    -p ${ports[0]}:6080 \
+    -p ${ports[1]}:6081 \
+    --name ${containerName} \
+    ${baseImage}`;
+
+
     exec(runCommand, async (error, stdout, stderr) => {
       if (error) {
         console.error(`Error starting container: ${error.message}`);
+        await releasePorts(ports); 
         return res.status(500).send(`Error starting container: ${error.message}`);
       }
 
       const roomId = containerName.split("-")[3];
-
       const room = await prisma.room.create({
         data: {
           roomId,
           containerName,
-          websockifyPort: port,
-          userId: user.id
+          websockifyPorts: ports,
+          userId: user.id,
         },
       });
 
       console.log(`Container started: ${stderr}`);
-      return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPort,  userId: user.id });
+      return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPorts[0], userId: user.id });
     });
   } catch (error) {
     console.error("Error creating new instance:", error);
@@ -140,12 +123,39 @@ app.post("/api/join", async (req, res) => {
       return res.status(404).send("Room not found");
     }
 
-    return res.status(200).json({ containerName: room.containerName, websockifyPort: room.websockifyPort });
+    return res.status(200).json({ containerName: room.containerName, websockifyPort: room.websockifyPorts[0] });
   } catch (error) {
     console.error("Error joining room:", error);
     return res.status(500).send("Failed to join room");
   }
 });
+
+app.post("/api/switch-workspace", async (req, res) => {
+  const { roomId, workspaceId } = req.body;
+
+  if (workspaceId < 1 || workspaceId > 2) {
+    return res.status(400).json({ error: "Invalid workspace ID. Must be between 1 and 2." });
+  }
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+    });
+
+    if (!room) {
+      return res.status(404).send("Room not found");
+    }
+
+    return res.status(200).json({ 
+      containerName: room.containerName, 
+      websockifyPort: room.websockifyPorts[workspaceId - 1] 
+    });
+  } catch (error) {
+    console.error("Error switching workspace:", error);
+    return res.status(500).send("Failed to switch workspace");
+  }
+});
+
 
 //get all snapshots(to be displayed while creating the room)
 app.get("/api/snapshots/:clerkId", async (req, res) => {
