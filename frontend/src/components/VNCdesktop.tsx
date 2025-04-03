@@ -57,7 +57,7 @@ function VNCdesktop({ websockifyPort, createdRoomId, roomId }: Props) {
   }, [websockifyPort, currentPort, isConnected]);
 
   return (
-    <div className="flex items-center justify-center w-full h-full">
+    <div className={`w-full h-full ${loading ? "flex items-center justify-center" : ""}`}>  
       {loading && (
         <div className="absolute flex flex-col items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
