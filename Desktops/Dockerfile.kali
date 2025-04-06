@@ -144,6 +144,7 @@ Categories=Development;\n" > /home/$user/.local/share/applications/code.desktop 
     chown -R $user:$user /home/$user/Desktop && \
     chmod 777 /home/$user/CodeFiles && \
     echo "alias code='code --no-sandbox'" >> /home/$user/.bashrc && \
+    ln -s /home/$user/CodeFiles /home/$user/Desktop/CodeFiles && \
     echo "cd /home/$user/CodeFiles" >> /home/$user/.bashrc; \
 done
 

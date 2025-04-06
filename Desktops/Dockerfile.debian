@@ -125,12 +125,12 @@ RUN for user in user1 user2; do \
     chown -R $user:$user /home/$user/Desktop; \
     echo "alias code='code --no-sandbox'" >> /home/$user/.bashrc && \
     echo "cd /home/$user/CodeFiles" >> /home/$user/.bashrc; \
-    # Configure KDE defaults
     mkdir -p /home/$user/.config && \
     echo '[General]\n\
     LookAndFeelPackage=org.kde.breeze.desktop\n\
     theme=Breeze\n\
     iconTheme=breeze\n' > /home/$user/.config/kdeglobals && \
+    ln -s /home/$user/CodeFiles /home/$user/Desktop/CodeFiles && \
     chown -R $user:$user /home/$user/.config; \
     done
 
