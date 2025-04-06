@@ -2,7 +2,7 @@
   "dependencies": {
     "@clerk/types": "^4.47.0",
     "@google/generative-ai": "^0.23.0",
-    "@prisma/client": "^6.4.1",
+    "@prisma/client": "^6.5.0",
     "agora-access-token": "^2.0.4",
     "agora-token": "^2.0.3",
     "archiver": "^7.0.1",
@@ -31,6 +31,6 @@
   "devDependencies": {
     "morgan": "^1.10.0",
     "nodemon": "^3.1.7",
-    "prisma": "^6.0.1"
+    "prisma": "^6.5.0"
   }
 }

@@ -1,8 +1,6 @@
-
 generator client {
   provider = "prisma-client-js"
 }
-
 
 datasource db {
   provider = "postgresql"
@@ -11,27 +9,31 @@ datasource db {
 
 model User {
   id        Int        @id @default(autoincrement())
-  clerkId   String     @unique // clerk authentication ID
+  clerkId   String     @unique
   email     String     @unique
   name      String
   createdAt DateTime   @default(now())
   snapshots Snapshot[]
-  Room      Room[]
+  rooms     Room[]     @relation("room_participants")
+  createdRooms Room[]  @relation("room_creator")
 }
+
 model Room {
   id             Int      @id @default(autoincrement())
   roomId         String   @unique
   containerName  String
   websockifyPorts Int[]
+  osType         String   // 'ubuntu', 'debian', or 'kali'
   createdAt      DateTime @default(now())
-  userId         Int
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creatorId      Int
+  creator        User     @relation("room_creator", fields: [creatorId], references: [id], onDelete: Cascade)
+  participants   User[]   @relation("room_participants")
 }
 
 model Snapshot {
   id            Int      @id @default(autoincrement())
-  snapshotName  String   @unique // name used for the Docker image
-  containerName String   @unique //  original container it was created from
+  snapshotName  String   @unique
+  containerName String   @unique
   userId        Int
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt     DateTime @default(now())
