@@ -49,10 +49,16 @@ app.post("/api/register", async (req, res) => {
 
 
 app.post("/api/new-instance", async (req, res) => {
-  const { userScript, clerkId, snapshotName } = req.body;
+  const { userScript, clerkId, snapshotName, osType = 'ubuntu' } = req.body;
+  
   try {
     const ports = await getNextAvailablePorts(); 
-    const containerName = `ubuntu-vnc-instance-${Date.now()}`;
+    const containerName = `vnc-instance-${Date.now()}`;
+    const validOSTypes = ['ubuntu', 'debian', 'kali'];
+    
+    if (!validOSTypes.includes(osType.toLowerCase())) {
+      return res.status(400).json({ error: "Invalid OS type. Must be ubuntu, debian, or kali" });
+    }
 
     let user = await prisma.user.findUnique({ where: { clerkId } });
     if (!user) {
@@ -69,20 +75,13 @@ app.post("/api/new-instance", async (req, res) => {
       }
     }
 
-    let scriptFilePath = "";
-    if (userScript.trim()) {
-      scriptFilePath = `/tmp/user-script-${Date.now()}.sh`;
-      fs.writeFileSync(scriptFilePath, userScript);
-    }
-
-    const baseImage = snapshot ? snapshotName : "ubuntu-vnc-image";
+    const baseImage = snapshot ? snapshotName : `${osType}-vnc-image`;
 
     const runCommand = `docker run -d \
-    -p ${ports[0]}:6080 \
-    -p ${ports[1]}:6081 \
-    --name ${containerName} \
-    ${baseImage}`;
-
+      -p ${ports[0]}:6080 \
+      -p ${ports[1]}:6081 \
+      --name ${containerName} \
+      ${baseImage}`;
 
     exec(runCommand, async (error, stdout, stderr) => {
       if (error) {
@@ -91,18 +90,61 @@ app.post("/api/new-instance", async (req, res) => {
         return res.status(500).send(`Error starting container: ${error.message}`);
       }
 
-      const roomId = containerName.split("-")[3];
+      if (userScript?.trim()) {
+        const encodedScript = Buffer.from(userScript).toString('base64');
+  
+        const wrapperScript = `
+            #!/bin/bash
+            mkdir -p /home/user1/Desktop
+            cd /home/user1/Desktop
+            ${userScript}
+        `;
+        
+        const encodedWrapper = Buffer.from(wrapperScript).toString('base64');
+        const execCommand = `echo ${encodedWrapper} | base64 -d | docker exec -i ${containerName} bash`;
+        
+        exec(execCommand, (execError, execStdout, execStderr) => {
+            if (execError) {
+                console.error(`Error executing user script: ${execError.message}`);
+                console.error(`Stderr: ${execStderr}`);
+            }
+            console.log(`User script output: ${execStdout}`);
+            
+            // Verify execution location
+            const verifyCommand = `docker exec ${containerName} ls -la /home/user1/Desktop`;
+            exec(verifyCommand, (verifyError, verifyStdout, verifyStderr) => {
+                console.log(`Desktop contents:\n${verifyStdout}`);
+            });
+        });
+    }
+
+      const roomId = containerName.split("-")[2];
       const room = await prisma.room.create({
         data: {
           roomId,
           containerName,
           websockifyPorts: ports,
-          userId: user.id,
+          osType: osType.toLowerCase(),
+          creator: {
+            connect: { id: user.id }
+          },
+          participants: {
+            connect: { id: user.id } 
+          }
         },
+        include: {
+          creator: true,
+          participants: true
+        }
       });
 
-      console.log(`Container started: ${stderr}`);
-      return res.status(200).json({ roomId: room.roomId, websockifyPort: room.websockifyPorts[0], userId: user.id });
+      console.log(`Container started: ${containerName}`);
+      return res.status(200).json({ 
+        roomId: room.roomId, 
+        websockifyPort: room.websockifyPorts[0], 
+        creatorId: user.id,
+        osType: room.osType,
+      });
     });
   } catch (error) {
     console.error("Error creating new instance:", error);
@@ -112,21 +154,64 @@ app.post("/api/new-instance", async (req, res) => {
 
 
 app.post("/api/join", async (req, res) => {
-  const { roomId } = req.body;
+  const { roomId, clerkId } = req.body;
 
   try {
     const room = await prisma.room.findUnique({
       where: { roomId },
+      include: {
+        creator: true,
+        participants: true
+      }
     });
 
     if (!room) {
-      return res.status(404).send("Room not found");
+      return res.status(404).json({ error: "Room not found" });
     }
 
-    return res.status(200).json({ containerName: room.containerName, websockifyPort: room.websockifyPorts[0] });
+    const user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const isParticipant = room.participants.some(p => p.id === user.id);
+
+    if (isParticipant) {
+      return res.status(409).json({ 
+        error: "User already in meeting",
+        containerName: room.containerName,
+        websockifyPort: room.websockifyPorts[0]
+      });
+    }
+
+    const updatedRoom = await prisma.room.update({
+      where: { roomId },
+      data: {
+        participants: {
+          connect: { id: user.id }
+        }
+      },
+      include: {
+        creator: true,
+        participants: true
+      }
+    });
+
+    return res.status(200).json({ 
+      containerName: updatedRoom.containerName, 
+      websockifyPort: updatedRoom.websockifyPorts[0],
+      osType: updatedRoom.osType,
+      creator: {
+        id: updatedRoom.creator.id,
+        name: updatedRoom.creator.name
+      }
+    });
   } catch (error) {
     console.error("Error joining room:", error);
-    return res.status(500).send("Failed to join room");
+    return res.status(500).json({ error: "Failed to join room" });
   }
 });
 
@@ -187,7 +272,10 @@ app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
   try {
     const room = await prisma.room.findUnique({
       where: { roomId },
-      include: { user: true },
+      include: {
+        creator: true,
+        participants: true
+      }
     });
 
     if (!room) {
@@ -195,11 +283,18 @@ app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
     }
 
     const user = await prisma.user.findUnique({
-      where: { clerkId },
+      where: { clerkId }
     });
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
+    }
+
+    const isCreator = room.creator.clerkId === clerkId;
+    const isParticipant = room.participants.some(p => p.clerkId === clerkId);
+
+    if (!isCreator && !isParticipant) {
+      return res.status(403).json({ error: "Unauthorized to take snapshot" });
     }
 
     const { containerName } = room;
@@ -222,7 +317,11 @@ app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
       });
 
       console.log(`Snapshot created: ${stdout}`);
-      return res.status(200).json({ message: "Snapshot created successfully", snapshot });
+      return res.status(200).json({ 
+        message: "Snapshot created successfully", 
+        snapshot,
+        roomId: room.roomId
+      });
     });
   } catch (error) {
     console.error("Error taking snapshot:", error);
@@ -232,12 +331,12 @@ app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
 
 
 // download a file/folder from the container
-app.get("/api/download/:roomId", async (req, res) => {
-  const { roomId } = req.params;
+app.get("/api/download/:roomId/:workspaceId", async (req, res) => {
+  const { roomId, workspaceId } = req.params;
 
   try {
     const containerName = `ubuntu-vnc-instance-${roomId}`;
-    const containerPath = "/home/user/CodeFiles";
+    const containerPath = `/home/user${workspaceId}/CodeFiles`;
     const subdir = `${Date.now()}${Math.floor(Math.random() * 100)}`;
     const localPath = path.join(__dirname, "downloads", roomId, subdir);
 
@@ -285,10 +384,10 @@ app.get("/api/download/:roomId", async (req, res) => {
   }
 });
 
-app.post("/api/upload/:roomId", upload.any(), async (req, res) => {
-  const { roomId } = req.params;
+app.post("/api/upload/:roomId/:workspaceId", upload.any(), async (req, res) => {
+  const { roomId, workspaceId } = req.params;
   const containerName = `ubuntu-vnc-instance-${roomId}`;
-  const containerBasePath = "/home/user/CodeFiles";
+  const containerBasePath =`/home/user${workspaceId}/CodeFiles`;
   const relativePaths = req.body["relativePaths"]; 
   try {
     if (!req.files || req.files.length === 0) {
@@ -407,28 +506,33 @@ process.on("SIGINT", async () => {
   console.log("Server is shutting down. Cleaning up Docker containers...");
 
   try {
-    const { stdout, stderr } = await execPromise("docker ps --filter 'name=ubuntu-vnc-instance' -q")
-
-    const containerIds = stdout.split("\n").filter(Boolean)
+    const { stdout, stderr } = await execPromise("docker ps -a --filter 'name=*-vnc-instance' --format '{{.ID}}'");
+    
+    const containerIds = stdout.split("\n").filter(Boolean);
 
     if (containerIds.length > 0) {
+      console.log(`Found ${containerIds.length} containers to remove`);
       const removeCommand = `docker rm -f ${containerIds.join(" ")}`;
       await execPromise(removeCommand);
-      console.log("Cleaned up Docker containers.")
+      console.log(`Successfully removed ${containerIds.length} containers`);
+    } else {
+      console.log("No containers to clean up");
     }
 
-    console.log("Server shutdown complete.")
-  } catch (error) {
-    console.error("Error during shutdown:", error)
-  }finally{
+    console.log("Cleaning up database records...");
     await prisma.room.deleteMany();
-    console.log("Rooms data deleted")
+    console.log("All room records deleted");
+
+  } catch (error) {
+    console.error("Error during shutdown cleanup:", error);
+  } finally {
     await prisma.$disconnect();
     await redis.quit();
+    console.log("Database connections closed");
+    process.exit(0);
   }
-
-  process.exit(0);
 });
+
 
 async function execPromise(command) {
   return new Promise((resolve, reject) => {
