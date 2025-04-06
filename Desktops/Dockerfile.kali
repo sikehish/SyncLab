@@ -6,7 +6,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
-# install core components with kali compatible GL packages
 RUN apt-get update && apt-get install -y \
     kali-desktop-xfce \
     tigervnc-standalone-server \
@@ -82,21 +81,17 @@ RUN apt-get update && \
     usermod -aG sudo "$user" && \
     echo "$user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/nopasswd-$user && \
     \
-    # Set proper permissions for home directory
     chmod 755 /home/$user && \
     \
-    # Environment variables
     echo "export GNOME_KEYRING_CONTROL=" >> /home/$user/.bashrc && \
     echo "export SSH_AUTH_SOCK=" >> /home/$user/.bashrc && \
     \
-    # VNC setup with proper permissions
     mkdir -p /home/$user/.vnc /home/$user/.config/tigervnc /home/$user/CodeFiles && \
     /bin/bash -c "echo 'password' | vncpasswd -f > /home/$user/.vnc/passwd" && \
     chmod 600 /home/$user/.vnc/passwd && \
     chown -R $user:$user /home/$user/.vnc && \
     ln -sf ../.vnc/passwd /home/$user/.config/tigervnc/vncpasswd && \
     \
-    # Xstartup with proper permissions
     echo -e '#!/bin/sh\n\
 unset SESSION_MANAGER\n\
 unset DBUS_SESSION_BUS_ADDRESS\n\
@@ -105,11 +100,9 @@ exec dbus-launch --exit-with-session startxfce4' > /home/$user/.vnc/xstartup && 
     chmod +x /home/$user/.vnc/xstartup && \
     chown -R $user:$user /home/$user/.vnc /home/$user/.config && \
     \
-    # Create application directories with full permissions
     mkdir -p /home/$user/.local/share/applications /home/$user/Desktop && \
     chmod 775 /home/$user/.local /home/$user/.local/share /home/$user/.local/share/applications && \
     \
-    # Desktop files
     printf "[Desktop Entry]\n\
 Name=Firefox\n\
 Exec=firefox\n\
@@ -134,7 +127,6 @@ Terminal=false\n\
 Type=Application\n\
 Categories=Development;\n" > /home/$user/.local/share/applications/code.desktop && \
     \
-    # Set permissions for desktop files
     chmod 664 /home/$user/.local/share/applications/*.desktop && \
     chown -R $user:$user /home/$user/.local && \
     \
@@ -148,7 +140,6 @@ Categories=Development;\n" > /home/$user/.local/share/applications/code.desktop 
     echo "cd /home/$user/CodeFiles" >> /home/$user/.bashrc; \
 done
 
-# Final permissions cleanup
 RUN chmod 0440 /etc/sudoers.d/* && \
     rm -f /etc/xdg/autostart/xfce-polkit.desktop && \
     rm -f /etc/xdg/autostart/*keyring*.desktop
