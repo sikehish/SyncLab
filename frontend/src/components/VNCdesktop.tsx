@@ -3,13 +3,11 @@ import { VncScreen } from "react-vnc";
 
 interface Props {
   websockifyPort: number;
-  createdRoomId: string;
   roomId: string;
+  isFullScreen: boolean;
 }
 
-function VNCdesktop({ websockifyPort, createdRoomId, roomId }: Props) {
-  console.log("VNC Desktop: ", websockifyPort);
-
+function VNCdesktop({ websockifyPort, roomId, isFullScreen }: Props) {
   const vncRef = useRef<any>(null);
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
@@ -68,13 +66,19 @@ function VNCdesktop({ websockifyPort, createdRoomId, roomId }: Props) {
       <VncScreen
         ref={vncRef}
         url={`ws://127.0.0.1:${websockifyPort}/websockify`}
-        scaleViewport
         background="#000000"
         style={{
-          width: "75vw",
-          height: "75vh",
+          width: isFullScreen ? "100vw" : "75vw",
+          height: isFullScreen ? "100vh" : "75vh",
           opacity: loading ? 0 : 1,
         }}
+        focusOnClick
+        // clipViewport
+        // dragViewport
+        scaleViewport
+        resizeSession
+        // showDotCursor
+        autoConnect
         rfbOptions={{
           shared: false,
           credentials: {

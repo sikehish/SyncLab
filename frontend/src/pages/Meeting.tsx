@@ -16,7 +16,7 @@ import {
   usePublish,
   useRemoteUsers,
 } from "agora-rtc-react";
-import { FaMicrophone, FaMicrophoneAltSlash, FaVideo, FaVideoSlash, FaPhoneAlt } from "react-icons/fa";
+import { FaMicrophone, FaMicrophoneAltSlash, FaVideo, FaVideoSlash, FaExpand, FaCompress } from "react-icons/fa";
 import DefaultImage from "../assets/default_photo.png";
 import { useUser } from "@clerk/clerk-react";
 
@@ -30,6 +30,7 @@ const Meeting: React.FC = () => {
   const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
   const isConnected = useIsConnected();
   const appId = "78687755363a4287800e7b67be774e0f";
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const { user } = useUser();
   const username = user?.username || user?.fullName || "Guest";
   const [websockifyPort, setWebsockifyPort] = useState(initialPort);
@@ -60,7 +61,7 @@ const Meeting: React.FC = () => {
       try {
         setIsUploading(true);
         toast.info("Uploading files, please wait...");
-        const response = await fetch(`http://localhost:5000/api/upload/${roomId}`, {
+        const response = await fetch(`http://localhost:5000/api/upload/${roomId}/${workspaceId}`, {
           method: "POST",
           body: formData,
         });
@@ -82,7 +83,7 @@ const Meeting: React.FC = () => {
   const handleDownload = async () => {
     try {
       toast.info("Preparing your download...");
-      const response = await fetch(`http://localhost:5000/api/download/${roomId}`, {
+      const response = await fetch(`http://localhost:5000/api/download/${roomId}/${workspaceId}`, {
         method: "GET",
       });
 
@@ -134,6 +135,11 @@ const Meeting: React.FC = () => {
       setIsCapturingSnapshot(false);
     }
   };
+
+  const toggleFullScreen = () => {
+    setIsFullScreen(!isFullScreen);
+  };
+
 
   const switchWorkspace = async (newWorkspaceId: number) => {
     try {
@@ -192,6 +198,14 @@ const Meeting: React.FC = () => {
       <option value={2}>Workspace 2</option>
     </select>
   </div>
+
+  <button
+            className="p-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+            onClick={toggleFullScreen}
+            title={isFullScreen ? "Exit Full Screen" : "Enter Full Screen"}
+          >
+            {isFullScreen ? <FaCompress size={20} /> : <FaExpand size={20} />}
+          </button>
 
   {isConnected && (
     <button
@@ -253,40 +267,46 @@ const Meeting: React.FC = () => {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-shrink-0 w-3/4">
-          <VNCdesktop websockifyPort={websockifyPort} roomId={roomId} />
+        <div className={`${isFullScreen ? "w-full" : "w-3/4"}`}>
+          <VNCdesktop 
+            websockifyPort={websockifyPort} 
+            roomId={roomId} 
+            isFullScreen={isFullScreen} 
+          />
         </div>
 
-        <div className="flex flex-col w-1/4 overflow-y-auto">
-          <div className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg mb-4">
-            <LocalUser
-              audioTrack={localMicrophoneTrack}
-              cameraOn={cameraOn}
-              micOn={micOn}
-              videoTrack={localCameraTrack}
-              cover={DefaultImage}
-            >
-              <samp className="user-name text-center text-white absolute bottom-2 left-2 bg-opacity-50 bg-black px-2 py-1 rounded-md">
-                You
-              </samp>
-            </LocalUser>
-          </div>
-
-          <div className="">
-            {remoteUsers.map((user) => (
-              <div
-                className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg"
-                key={user.uid}
+        {!isFullScreen && (
+          <div className="flex flex-col w-1/4 overflow-y-auto">
+            <div className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg mb-4">
+              <LocalUser
+                audioTrack={localMicrophoneTrack}
+                cameraOn={cameraOn}
+                micOn={micOn}
+                videoTrack={localCameraTrack}
+                cover={DefaultImage}
               >
-                <RemoteUser cover={DefaultImage} user={user}>
-                  <samp className="user-name text-center text-white absolute bottom-2 left-2 bg-opacity-50 bg-black px-2 py-1 rounded-md">
-                    {user.uid}
-                  </samp>
-                </RemoteUser>
-              </div>
-            ))}
+                <samp className="user-name text-center text-white absolute bottom-2 left-2 bg-opacity-50 bg-black px-2 py-1 rounded-md">
+                  You
+                </samp>
+              </LocalUser>
+            </div>
+
+            <div className="">
+              {remoteUsers.map((user) => (
+                <div
+                  className="user w-full h-40 md:h-48 relative rounded-lg border-2 border-gray-300 overflow-hidden shadow-lg"
+                  key={user.uid}
+                >
+                  <RemoteUser cover={DefaultImage} user={user}>
+                    <samp className="user-name text-center text-white absolute bottom-2 left-2 bg-opacity-50 bg-black px-2 py-1 rounded-md">
+                      {user.uid}
+                    </samp>
+                  </RemoteUser>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <input
