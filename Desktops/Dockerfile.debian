@@ -1,0 +1,156 @@
+FROM debian:bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+RUN apt-get update --fix-missing && \
+    apt-get install -y \
+    kde-standard \
+    plasma-desktop \
+    plasma-nm \
+    kde-config-gtk-style \
+    kwin-x11 \
+    dolphin \
+    konsole \
+    kate \
+    dbus-x11 \
+    tigervnc-standalone-server \
+    tigervnc-common \
+    websockify \
+    curl \
+    wget \
+    gnupg2 \
+    software-properties-common \
+    apt-transport-https \
+    locales \
+    sudo \
+    vim \
+    gvfs \
+    git \
+    xauth \
+    xterm \
+    libxshmfence1 \
+    libxrandr2 \
+    libxinerama1 \
+    libxcursor1 \
+    libxi6 \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    libasound2 \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    xserver-xorg-core \
+    xserver-xorg-video-all \
+    xserver-xorg-input-all \
+    xserver-xorg-video-dummy \
+    x11-xkb-utils \
+    xkb-data \
+    xinit \
+    x11-xserver-utils \
+    xserver-xephyr \
+    breeze \
+    breeze-icon-theme \
+    arc-theme \
+    qt5-style-plugins \
+    fonts-noto \
+    fonts-freefont-ttf \
+    && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y firefox-esr
+
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg \
+    && install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/ \
+    && sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" > /etc/apt/sources.list.d/vscode.list' \
+    && apt-get update && apt-get install -y code \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN for user in user1 user2; do \
+    useradd -m -s /bin/bash "$user" && \
+    echo "$user:password" | chpasswd && \
+    usermod -aG sudo "$user" && \
+    echo "$user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    mkdir -p /home/$user/.vnc && \
+    echo "password" | vncpasswd -f > /home/$user/.vnc/passwd && \
+    chmod 600 /home/$user/.vnc/passwd && \
+    mkdir -p /home/$user/CodeFiles && chown -R $user:$user /home/$user/CodeFiles && \
+    mkdir -p /home/$user/Desktop && \
+    echo '#!/bin/sh\n\
+    unset SESSION_MANAGER\n\
+    unset DBUS_SESSION_BUS_ADDRESS\n\
+    export XKL_XMODMAP_DISABLE=1\n\
+    export XDG_CURRENT_DESKTOP=KDE\n\
+    export QT_STYLE_OVERRIDE=breeze\n\
+    export QT_QPA_PLATFORMTHEME=qt5ct\n\
+    dbus-launch --exit-with-session startplasma-x11 &\n\
+    while true; do sleep 1000; done' > /home/$user/.vnc/xstartup && \
+    chmod +x /home/$user/.vnc/xstartup && chown $user:$user /home/$user/.vnc/xstartup && \
+    echo '[Desktop Entry]\n\
+    Version=1.0\n\
+    Name=Firefox\n\
+    Comment=Access the Internet\n\
+    Exec=firefox\n\
+    Icon=firefox-esr\n\
+    Terminal=false\n\
+    Type=Application\n\
+    Categories=Network;WebBrowser;\n\
+    StartupNotify=true' > /home/$user/Desktop/firefox.desktop && \
+    chmod +x /home/$user/Desktop/firefox.desktop && \
+    echo '[Desktop Entry]\n\
+    Version=1.0\n\
+    Name=Terminal\n\
+    Comment=Use the terminal\n\
+    Exec=konsole --workdir /home/$user/CodeFiles\n\
+    Icon=utilities-terminal\n\
+    Terminal=false\n\
+    Type=Application\n\
+    Categories=System;TerminalEmulator;\n\
+    StartupNotify=true' > /home/$user/Desktop/terminal.desktop && \
+    chmod +x /home/$user/Desktop/terminal.desktop && \
+    echo '[Desktop Entry]\n\
+    Version=1.0\n\
+    Name=Visual Studio Code\n\
+    Comment=Code Editor\n\
+    Exec=code --new-window --disable-gpu --no-sandbox\n\
+    Icon=com.visualstudio.code\n\
+    Terminal=false\n\
+    Type=Application\n\
+    Categories=Development;IDE;\n\
+    StartupNotify=true' > /home/$user/Desktop/vscode.desktop && \
+    chmod +x /home/$user/Desktop/vscode.desktop && \
+    chown -R $user:$user /home/$user/Desktop; \
+    echo "alias code='code --no-sandbox'" >> /home/$user/.bashrc && \
+    echo "cd /home/$user/CodeFiles" >> /home/$user/.bashrc; \
+    # Configure KDE defaults
+    mkdir -p /home/$user/.config && \
+    echo '[General]\n\
+    LookAndFeelPackage=org.kde.breeze.desktop\n\
+    theme=Breeze\n\
+    iconTheme=breeze\n' > /home/$user/.config/kdeglobals && \
+    chown -R $user:$user /home/$user/.config; \
+    done
+
+EXPOSE 5901 5902 6080 6081
+
+CMD ["sh", "-c", \
+    "rm -f /tmp/.X*-lock /home/user1/.Xauthority /home/user2/.Xauthority && \
+    touch /home/user1/.Xauthority /home/user2/.Xauthority && \
+    chown user1:user1 /home/user1/.Xauthority && \
+    chown user2:user2 /home/user2/.Xauthority && \
+    mkdir -p /home/user1/.vnc /home/user2/.vnc && \
+    chown -R user1:user1 /home/user1/.vnc && \
+    chown -R user2:user2 /home/user2/.vnc && \
+    sudo -u user1 bash -c 'xauth add :1 . $(mcookie)' && \
+    sudo -u user2 bash -c 'xauth add :2 . $(mcookie)' && \
+    sudo -u user1 bash -c 'Xorg :1 -nolisten tcp -auth /home/user1/.Xauthority vt7 &' && \
+    sudo -u user2 bash -c 'Xorg :2 -nolisten tcp -auth /home/user2/.Xauthority vt8 &' && \
+    sleep 2 && \
+    sudo -u user1 bash -c 'DISPLAY=:1 vncserver :1 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup /home/user1/.vnc/xstartup &' && \
+    sudo -u user2 bash -c 'DISPLAY=:2 vncserver :2 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup /home/user2/.vnc/xstartup &' && \
+    websockify 6080 localhost:5901 & \
+    websockify 6081 localhost:5902 & \
+    tail -f /dev/null"]
