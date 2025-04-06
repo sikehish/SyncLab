@@ -53,7 +53,7 @@ app.post("/api/new-instance", async (req, res) => {
   
   try {
     const ports = await getNextAvailablePorts(); 
-    const containerName = `vnc-instance-${Date.now()}`;
+    const containerName = `${osType}-vnc-instance-${Date.now()}`;
     const validOSTypes = ['ubuntu', 'debian', 'kali'];
     
     if (!validOSTypes.includes(osType.toLowerCase())) {
@@ -118,7 +118,7 @@ app.post("/api/new-instance", async (req, res) => {
         });
     }
 
-      const roomId = containerName.split("-")[2];
+      const roomId = containerName.split("-")[3];
       const room = await prisma.room.create({
         data: {
           roomId,
@@ -335,7 +335,18 @@ app.get("/api/download/:roomId/:workspaceId", async (req, res) => {
   const { roomId, workspaceId } = req.params;
 
   try {
-    const containerName = `ubuntu-vnc-instance-${roomId}`;
+
+    const room = await prisma.room.findUnique({
+      where: { roomId }
+    });
+    
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const containerName = room.containerName;
+
+
     const containerPath = `/home/user${workspaceId}/CodeFiles`;
     const subdir = `${Date.now()}${Math.floor(Math.random() * 100)}`;
     const localPath = path.join(__dirname, "downloads", roomId, subdir);
@@ -386,10 +397,20 @@ app.get("/api/download/:roomId/:workspaceId", async (req, res) => {
 
 app.post("/api/upload/:roomId/:workspaceId", upload.any(), async (req, res) => {
   const { roomId, workspaceId } = req.params;
-  const containerName = `ubuntu-vnc-instance-${roomId}`;
   const containerBasePath =`/home/user${workspaceId}/CodeFiles`;
   const relativePaths = req.body["relativePaths"]; 
   try {
+
+    const room = await prisma.room.findUnique({
+      where: { roomId }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const containerName = room.containerName;
+
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: "No files uploaded" });
     }
@@ -506,7 +527,7 @@ process.on("SIGINT", async () => {
   console.log("Server is shutting down. Cleaning up Docker containers...");
 
   try {
-    const { stdout, stderr } = await execPromise("docker ps -a --filter 'name=*-vnc-instance' --format '{{.ID}}'");
+    const { stdout, stderr } = await execPromise("docker ps -a --filter 'name=*-vnc-instance-*' --format '{{.ID}}'");
     
     const containerIds = stdout.split("\n").filter(Boolean);
 

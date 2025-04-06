@@ -33,7 +33,7 @@ model Room {
 model Snapshot {
   id            Int      @id @default(autoincrement())
   snapshotName  String   @unique
-  containerName String   @unique
+  containerName String   
   userId        Int
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt     DateTime @default(now())
