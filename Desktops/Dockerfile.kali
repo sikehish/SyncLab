@@ -1,0 +1,184 @@
+FROM kalilinux/kali-rolling:latest
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=Etc/UTC \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
+
+# install core components with kali compatible GL packages
+RUN apt-get update && apt-get install -y \
+    kali-desktop-xfce \
+    tigervnc-standalone-server \
+    websockify \
+    curl \
+    wget \
+    gnupg \
+    software-properties-common \
+    apt-transport-https \
+    locales \
+    sudo \
+    vim \
+    mousepad \
+    pcmanfm \
+    gvfs \
+    git \
+    xauth \
+    xterm \
+    libglx-mesa0 \
+    libgl1-mesa-dri \
+    mesa-vulkan-drivers \
+    libasound2 \
+    libnss3 \
+    libxshmfence1 \
+    libxrandr2 \
+    libxinerama1 \
+    libxcursor1 \
+    libxi6 \
+    xserver-xorg-core \
+    xserver-xorg-input-all \
+    xserver-xorg-video-dummy \
+    x11-xkb-utils \
+    xkb-data \
+    mesa-utils \
+    libglvnd0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+RUN apt-get update && apt-get install -y firefox-esr
+
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg \
+    && install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/ \
+    && echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" > /etc/apt/sources.list.d/vscode.list \
+    && apt-get update && apt-get install -y code \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    RUN apt-get update && apt-get install -y \
+    xfce4-terminal
+
+
+RUN apt-get update && \
+    apt-get install -y \
+    xfce4 \
+    xfce4-goodies \
+    libglib2.0-bin \
+    --no-install-recommends && \
+    apt-get purge -y gnome-keyring seahorse policykit-1 && \
+    rm -rf /var/lib/apt/lists/* && \
+    \
+    mkdir -p /etc/xdg/autostart && \
+    echo -e "[Desktop Entry]\nHidden=true" > /etc/xdg/autostart/gnome-keyring-pkcs11.desktop && \
+    echo -e "[Desktop Entry]\nHidden=true" > /etc/xdg/autostart/gnome-keyring-secrets.desktop && \
+    echo -e "[Desktop Entry]\nHidden=true" > /etc/xdg/autostart/gnome-keyring-ssh.desktop && \
+    \
+    mkdir -p /etc/xdg/xfce4/desktop && \
+    echo -e "[desktop]\nDisableDesktopFileValidation=true" > /etc/xdg/xfce4/desktop/desktoprc
+
+    RUN for user in user1 user2; do \
+    useradd -m -s /bin/bash "$user" && \
+    echo "$user:password" | chpasswd && \
+    usermod -aG sudo "$user" && \
+    echo "$user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/nopasswd-$user && \
+    \
+    # Set proper permissions for home directory
+    chmod 755 /home/$user && \
+    \
+    # Environment variables
+    echo "export GNOME_KEYRING_CONTROL=" >> /home/$user/.bashrc && \
+    echo "export SSH_AUTH_SOCK=" >> /home/$user/.bashrc && \
+    \
+    # VNC setup with proper permissions
+    mkdir -p /home/$user/.vnc /home/$user/.config/tigervnc /home/$user/CodeFiles && \
+    /bin/bash -c "echo 'password' | vncpasswd -f > /home/$user/.vnc/passwd" && \
+    chmod 600 /home/$user/.vnc/passwd && \
+    chown -R $user:$user /home/$user/.vnc && \
+    ln -sf ../.vnc/passwd /home/$user/.config/tigervnc/vncpasswd && \
+    \
+    # Xstartup with proper permissions
+    echo -e '#!/bin/sh\n\
+unset SESSION_MANAGER\n\
+unset DBUS_SESSION_BUS_ADDRESS\n\
+unset GNOME_KEYRING_CONTROL\n\
+exec dbus-launch --exit-with-session startxfce4' > /home/$user/.vnc/xstartup && \
+    chmod +x /home/$user/.vnc/xstartup && \
+    chown -R $user:$user /home/$user/.vnc /home/$user/.config && \
+    \
+    # Create application directories with full permissions
+    mkdir -p /home/$user/.local/share/applications /home/$user/Desktop && \
+    chmod 775 /home/$user/.local /home/$user/.local/share /home/$user/.local/share/applications && \
+    \
+    # Desktop files
+    printf "[Desktop Entry]\n\
+Name=Firefox\n\
+Exec=firefox\n\
+Icon=firefox\n\
+Terminal=false\n\
+Type=Application\n\
+Categories=Network;\n" > /home/$user/.local/share/applications/firefox.desktop && \
+    \
+    printf "[Desktop Entry]\n\
+Name=Terminal\n\
+Exec=xfce4-terminal --working-directory=/home/$user/CodeFiles\n\
+Icon=utilities-terminal\n\
+Terminal=false\n\
+Type=Application\n\
+Categories=System;\n" > /home/$user/.local/share/applications/terminal.desktop && \
+    \
+    printf "[Desktop Entry]\n\
+Name=VS Code\n\
+Exec=code --new-window --disable-gpu --no-sandbox --password-store=basic\n\
+Icon=code\n\
+Terminal=false\n\
+Type=Application\n\
+Categories=Development;\n" > /home/$user/.local/share/applications/code.desktop && \
+    \
+    # Set permissions for desktop files
+    chmod 664 /home/$user/.local/share/applications/*.desktop && \
+    chown -R $user:$user /home/$user/.local && \
+    \
+    cp /home/$user/.local/share/applications/*.desktop /home/$user/Desktop/ && \
+    chmod 775 /home/$user/Desktop && \
+    chmod 775 /home/$user/Desktop/*.desktop && \
+    chown -R $user:$user /home/$user/Desktop && \
+    chmod 777 /home/$user/CodeFiles && \
+    echo "alias code='code --no-sandbox'" >> /home/$user/.bashrc && \
+    echo "cd /home/$user/CodeFiles" >> /home/$user/.bashrc; \
+done
+
+# Final permissions cleanup
+RUN chmod 0440 /etc/sudoers.d/* && \
+    rm -f /etc/xdg/autostart/xfce-polkit.desktop && \
+    rm -f /etc/xdg/autostart/*keyring*.desktop
+    
+CMD ["/bin/sh", "-c", \
+    "rm -f /tmp/.X* && \
+    for user in user1 user2; do \
+        DISPLAY_NUM=$(if [ \"$user\" = \"user1\" ]; then echo 1; else echo 2; fi); \
+        mkdir -p /home/$user/.vnc && \
+        mkdir -p /home/$user/.config/tigervnc && \
+        chown -R $user:$user /home/$user/.vnc && \
+        chown -R $user:$user /home/$user/.config && \
+        sudo -u $user -H bash -c \" \
+            export USER=$user; \
+            export TIGERVNC_SKIP_MIGRATION=1; \
+            mkdir -p /home/$user/.cache; \
+            touch /home/$user/.Xauthority; \
+            chmod 700 /home/$user/.Xauthority || true; \
+            chown $user:$user /home/$user/.Xauthority; \
+            xauth add :$DISPLAY_NUM . \\$(mcookie); \
+            vncserver :$DISPLAY_NUM \
+                -geometry 1280x800 \
+                -depth 24 \
+                -SecurityTypes VncAuth \
+                -PasswordFile /home/$user/.vnc/passwd \
+                -xstartup /home/$user/.vnc/xstartup \
+                -localhost no \
+                -AlwaysShared \
+                -fg; \
+        \" & \
+    done && \
+    websockify 6080 localhost:5901 & \
+    websockify 6081 localhost:5902 & \
+    tail -f /dev/null"]
