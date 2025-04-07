@@ -5,6 +5,7 @@ const morgan = require("morgan");
 const { RtcTokenBuilder, RtcRole } = require("agora-access-token");
 const { PrismaClient } = require("@prisma/client");
 const fs = require("fs");
+const PACKAGE_LIBRARY = require("./utils/packageLibrary")
 const multer = require("multer");
 const dotenv=require("dotenv").config()
 const path = require("path");
@@ -47,9 +48,8 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-
 app.post("/api/new-instance", async (req, res) => {
-  const { userScript, clerkId, snapshotName, osType = 'ubuntu' } = req.body;
+  const { userScript, clerkId, snapshotName, osType = 'ubuntu', selectedPackages = [] } = req.body;
   
   try {
     const ports = await getNextAvailablePorts(); 
@@ -58,6 +58,16 @@ app.post("/api/new-instance", async (req, res) => {
     
     if (!validOSTypes.includes(osType.toLowerCase())) {
       return res.status(400).json({ error: "Invalid OS type. Must be ubuntu, debian, or kali" });
+    }
+
+    const invalidPackages = selectedPackages.filter(pkg => 
+      !Object.values(PACKAGE_LIBRARY).flat().includes(pkg)
+    );
+    if (invalidPackages.length > 0) {
+      return res.status(400).json({ 
+        error: "Invalid packages selected",
+        invalidPackages
+      });
     }
 
     let user = await prisma.user.findUnique({ where: { clerkId } });
@@ -89,34 +99,34 @@ app.post("/api/new-instance", async (req, res) => {
         await releasePorts(ports); 
         return res.status(500).send(`Error starting container: ${error.message}`);
       }
+      
+      if (selectedPackages.length > 0) {
+        const installCommand = `docker exec ${containerName} bash -c \
+          "sudo apt-get install -y ${selectedPackages.join(' ')}"`;
+        
+        const child = exec(installCommand, {timeout: 120000}); // 2 minute timeout
+      
+        // streaming output to prevent hanging
+        child.stdout.on('data', console.log);
+        child.stderr.on('data', console.error);
+      
+        await new Promise((resolve) => {
+          child.on('exit', resolve);
+          child.on('error', resolve); 
+        });
+      }
 
       if (userScript?.trim()) {
         const encodedScript = Buffer.from(userScript).toString('base64');
-  
-        const wrapperScript = `
-            #!/bin/bash
-            mkdir -p /home/user1/Desktop
-            cd /home/user1/Desktop
-            ${userScript}
-        `;
-        
-        const encodedWrapper = Buffer.from(wrapperScript).toString('base64');
-        const execCommand = `echo ${encodedWrapper} | base64 -d | docker exec -i ${containerName} bash`;
+        const execCommand = `echo ${encodedScript} | base64 -d | docker exec -i ${containerName} bash`;
         
         exec(execCommand, (execError, execStdout, execStderr) => {
-            if (execError) {
-                console.error(`Error executing user script: ${execError.message}`);
-                console.error(`Stderr: ${execStderr}`);
-            }
-            console.log(`User script output: ${execStdout}`);
-            
-            // Verify execution location
-            const verifyCommand = `docker exec ${containerName} ls -la /home/user1/Desktop`;
-            exec(verifyCommand, (verifyError, verifyStdout, verifyStderr) => {
-                console.log(`Desktop contents:\n${verifyStdout}`);
-            });
+          if (execError) {
+            console.error(`Script execution error: ${execError}`);
+          }
+          console.log(`User script output: ${execStdout}`);
         });
-    }
+      }
 
       const roomId = containerName.split("-")[3];
       const room = await prisma.room.create({
@@ -130,7 +140,7 @@ app.post("/api/new-instance", async (req, res) => {
           },
           participants: {
             connect: { id: user.id } 
-          }
+          },
         },
         include: {
           creator: true,
@@ -144,12 +154,20 @@ app.post("/api/new-instance", async (req, res) => {
         websockifyPort: room.websockifyPorts[0], 
         creatorId: user.id,
         osType: room.osType,
+        installedPackages: selectedPackages
       });
     });
   } catch (error) {
     console.error("Error creating new instance:", error);
-    return res.status(500).send("Failed to create new instance");
+    return res.status(500).json({ 
+      error: "Failed to create new instance",
+      details: error.message 
+    });
   }
+});
+
+app.get("/api/available-packages", (req, res) => {
+  res.status(200).json(PACKAGE_LIBRARY);
 });
 
 
@@ -212,6 +230,70 @@ app.post("/api/join", async (req, res) => {
   } catch (error) {
     console.error("Error joining room:", error);
     return res.status(500).json({ error: "Failed to join room" });
+  }
+});
+
+app.post("/api/leave-room/:roomId", async (req, res) => {
+  const { roomId } = req.params;
+  const { clerkId } = req.body;
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+      include: {
+        participants: true
+      }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+  
+    const isParticipant = room.participants.some(p => p.id === user.id);
+    if (!isParticipant) return res.status(400).json({ error: "User is not in this room" });
+    
+    await prisma.room.update({
+      where: { roomId },
+      data: {
+        participants: {
+          disconnect: { id: user.id }
+        }
+      }
+    });
+    const updatedRoom = await prisma.room.findUnique({
+      where: { roomId },
+      include: {
+        participants: true
+      }
+    });
+
+    if (updatedRoom.participants.length === 0) {
+      const { containerName } = updatedRoom;
+      exec(`docker rm -f ${containerName}`, async (error) => {
+        if (error) {
+          console.error(`Error removing container ${containerName}:`, error);
+          return res.status(500).json({ error: "Failed to remove container" });
+        }
+        await releasePorts(updatedRoom.websockifyPorts);
+        await prisma.room.delete({
+          where: { roomId }
+        });
+
+        console.log(`Container ${containerName} and room ${roomId} deleted`);
+        return res.status(200).json({ message: "Room deleted" });
+      });
+    } else {
+      return res.status(200).json({ message: "User removed from room" });
+    }
+  } catch (error) {
+    console.error("Error in leave-room endpoint:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -497,7 +579,6 @@ app.get("/api/getUsername/:uid", async (req, res) => {
   const uid = req.params.uid;
 
   try {
-    // Fetch username from Redis using the uid
     const username = await redis.get(uid);
 
     if (username) {

@@ -38,8 +38,38 @@ const Meeting: React.FC = () => {
 
   console.log("TOKEN: ", token)
 
-  const handleLeaveMeeting = () => {
-    navigate("/");
+  const [isLeaving, setIsLeaving] = useState(false); // Add this state
+
+  const handleLeaveMeeting = async () => {
+    setIsLeaving(true); // Start processing
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/leave-room/${roomId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ clerkId: user?.id }),
+      });
+  
+      if (!response.ok) {
+        throw new Error("Failed to leave room");
+      }
+  
+      const data = await response.json();
+      if (data.message === "Room deleted") {
+        toast.success("You were the last participant. Room has been deleted.");
+      } else {
+        toast.success("Left the room successfully");
+      }
+  
+      navigate("/");
+    } catch (error) {
+      toast.error("Error leaving room. Please try again.");
+      console.error("Error leaving room:", error);
+    } finally {
+      setIsLeaving(false); // End processing
+    }
   };
 
   const handleFileSelectAndUpload = () => {
@@ -181,6 +211,14 @@ const Meeting: React.FC = () => {
   console.log(user?.fullName, workspaceId, websockifyPort)
   return (
     <div className="relative w-full h-screen flex flex-col">
+      {isLeaving && (
+        <div className="absolute inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center">
+          <div className="text-white text-xl flex flex-col items-center">
+            <Loader size="large" />
+            <span className="mt-4">Leaving room...</span>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-100">
         <div className="text-lg font-semibold text-gray-700">
           Room ID: <span className="font-bold">{roomId}</span>
@@ -256,12 +294,15 @@ const Meeting: React.FC = () => {
   </button>
 
   <button
-    className="p-2 bg-red-500 text-white rounded-full hover:bg-red-700 transition"
-    onClick={handleLeaveMeeting}
-    title="Leave Meeting"
-  >
-    <FaSignOutAlt size={20} />
-  </button>
+        className={`p-2 bg-red-500 text-white rounded-full hover:bg-red-700 transition ${
+          isLeaving ? "opacity-50 cursor-not-allowed" : ""
+        }`}
+        onClick={handleLeaveMeeting}
+        disabled={isLeaving}
+        title="Leave Meeting"
+      >
+        {isLeaving ? <Loader size="small" /> : <FaSignOutAlt size={20} />}
+      </button>
 </div>
 
       </div>
