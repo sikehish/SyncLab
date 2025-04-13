@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
@@ -35,9 +35,7 @@ RUN apt-get update --fix-missing && \
     libxinerama1 \
     libxcursor1 \
     libxi6 \
-    libgl1-mesa-glx \
     libgl1-mesa-dri \
-    libasound2 \
     libnss3 \
     libatk-bridge2.0-0 \
     libgtk-3-0 \
@@ -54,11 +52,11 @@ RUN apt-get update --fix-missing && \
     apt-get remove -y blueman bluez bluez-cups bluez-obexd update-manager update-notifier update-notifier-common && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-RUN apt-get purge -y firefox && \
-    add-apt-repository -y ppa:mozillateam/ppa && \
-    echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' | tee /etc/apt/preferences.d/mozilla-firefox && \
-    apt-get update && \
-    apt-get install -y firefox
+# RUN apt-get purge -y firefox && \
+#     add-apt-repository -y ppa:mozillateam/ppa && \
+#     echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' | tee /etc/apt/preferences.d/mozilla-firefox && \
+#     apt-get update && \
+#     apt-get install -y firefox
 
 
 RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
@@ -66,6 +64,11 @@ RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor 
     sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" > /etc/apt/sources.list.d/vscode.list' && \
     apt-get update && apt-get install -y code && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
+
+
 
 RUN for user in user1 user2; do \
     useradd -m -s /bin/bash "$user" && \
@@ -137,20 +140,17 @@ RUN echo "manual" | tee /etc/init/bluetooth.override && \
 EXPOSE 5901 5902 6080 6081
 
 CMD ["sh", "-c", \
-    "rm -f /tmp/.X*-lock /home/user1/.Xauthority /home/user2/.Xauthority && \
-    touch /home/user1/.Xauthority /home/user2/.Xauthority && \
-    chown user1:user1 /home/user1/.Xauthority && \
-    chown user2:user2 /home/user2/.Xauthority && \
-    mkdir -p /home/user1/.vnc /home/user2/.vnc && \
-    chown -R user1:user1 /home/user1/.vnc && \
-    chown -R user2:user2 /home/user2/.vnc && \
-    sudo -u user1 bash -c 'xauth add :1 . $(mcookie)' && \
-    sudo -u user2 bash -c 'xauth add :2 . $(mcookie)' && \
-    sudo -u user1 bash -c 'Xorg :1 -nolisten tcp -auth /home/user1/.Xauthority vt7 &' && \
-    sudo -u user2 bash -c 'Xorg :2 -nolisten tcp -auth /home/user2/.Xauthority vt8 &' && \
-    sleep 2 && \
-    sudo -u user1 bash -c 'DISPLAY=:1 vncserver :1 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup /home/user1/.vnc/xstartup &' && \
-    sudo -u user2 bash -c 'DISPLAY=:2 vncserver :2 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup /home/user2/.vnc/xstartup &' && \
-    websockify 6080 localhost:5901 & \
-    websockify 6081 localhost:5902 & \
-    tail -f /dev/null"]
+  "rm -f /tmp/.X*-lock /home/user1/.Xauthority /home/user2/.Xauthority && \
+   touch /home/user1/.Xauthority /home/user2/.Xauthority && \
+   chown user1:user1 /home/user1/.Xauthority && \
+   chown user2:user2 /home/user2/.Xauthority && \
+   mkdir -p /home/user1/.vnc /home/user2/.vnc && \
+   chown -R user1:user1 /home/user1/.vnc && \
+   chown -R user2:user2 /home/user2/.vnc && \
+   sudo -u user1 bash -c 'vncserver :1 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup /home/user1/.vnc/xstartup &' && \
+   sudo -u user2 bash -c 'vncserver :2 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -xstartup /home/user2/.vnc/xstartup &' && \
+   sleep 5 && \
+   websockify 6080 localhost:5901 & \
+   websockify 6081 localhost:5902 & \
+   tail -f /dev/null"]
+

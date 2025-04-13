@@ -14,3 +14,5 @@ exec(`docker build -t ${imageName} ${dockerfilePath}`, (error, stdout, stderr) =
     console.log(`Build output:\n${stdout}`);
     console.log(`Docker image '${imageName}' built successfully.`);
 });
+
+// docker build -t ubuntu-vnc-image -f Dockerfile.ubuntu .
