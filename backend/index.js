@@ -70,7 +70,7 @@ app.post("/api/new-instance", async (req, res) => {
       });
     }
 
-    let user = await prisma.user.findUnique({ where: { clerkId } });
+    const user = await prisma.user.findUnique({ where: { clerkId } });
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -91,41 +91,14 @@ app.post("/api/new-instance", async (req, res) => {
       -p ${ports[0]}:6080 \
       -p ${ports[1]}:6081 \
       --name ${containerName} \
+      --shm-size=1g \
       ${baseImage}`;
 
     exec(runCommand, async (error, stdout, stderr) => {
       if (error) {
         console.error(`Error starting container: ${error.message}`);
-        await releasePorts(ports); 
-        return res.status(500).send(`Error starting container: ${error.message}`);
-      }
-      
-      if (selectedPackages.length > 0) {
-        const installCommand = `docker exec ${containerName} bash -c \
-          "sudo apt-get install -y ${selectedPackages.join(' ')}"`;
-        
-        const child = exec(installCommand, {timeout: 120000}); // 2 minute timeout
-      
-        // streaming output to prevent hanging
-        child.stdout.on('data', console.log);
-        child.stderr.on('data', console.error);
-      
-        await new Promise((resolve) => {
-          child.on('exit', resolve);
-          child.on('error', resolve); 
-        });
-      }
-
-      if (userScript?.trim()) {
-        const encodedScript = Buffer.from(userScript).toString('base64');
-        const execCommand = `echo ${encodedScript} | base64 -d | docker exec -i ${containerName} bash`;
-        
-        exec(execCommand, (execError, execStdout, execStderr) => {
-          if (execError) {
-            console.error(`Script execution error: ${execError}`);
-          }
-          console.log(`User script output: ${execStdout}`);
-        });
+        await releasePorts(ports);
+        return;
       }
 
       const roomId = containerName.split("-")[3];
@@ -135,12 +108,8 @@ app.post("/api/new-instance", async (req, res) => {
           containerName,
           websockifyPorts: ports,
           osType: osType.toLowerCase(),
-          creator: {
-            connect: { id: user.id }
-          },
-          participants: {
-            connect: { id: user.id } 
-          },
+          creator: { connect: { id: user.id } },
+          participants: { connect: { id: user.id } },
         },
         include: {
           creator: true,
@@ -149,14 +118,25 @@ app.post("/api/new-instance", async (req, res) => {
       });
 
       console.log(`Container started: ${containerName}`);
-      return res.status(200).json({ 
-        roomId: room.roomId, 
-        websockifyPort: room.websockifyPorts[0], 
-        creatorId: user.id,
-        osType: room.osType,
-        installedPackages: selectedPackages
-      });
+
+      if (userScript?.trim()) {
+        await executeUserScriptInBackground(containerName, userScript);
+      }
+
+    installPackagesInBackground(containerName, selectedPackages, roomId);
+
     });
+
+    const roomId = containerName.split("-")[3];
+    return res.status(202).json({ 
+      roomId,
+      websockifyPort: ports[0],
+      creatorId: user.id,
+      osType: osType.toLowerCase(),
+      installedPackages: selectedPackages,
+      message: "Container is being created. Package installation will continue in background."
+    });
+
   } catch (error) {
     console.error("Error creating new instance:", error);
     return res.status(500).json({ 
@@ -165,6 +145,48 @@ app.post("/api/new-instance", async (req, res) => {
     });
   }
 });
+
+async function installPackagesInBackground(containerName, packages, roomId) {
+  try {
+    console.log(`Starting background package installation for ${containerName}`);
+    
+    const updateCmd = `docker exec ${containerName} bash -c "sudo apt-get update -y"`;
+    await execAsync(updateCmd);
+        const installCmd = `docker exec ${containerName} bash -c \
+      "sudo apt-get install -y ${packages.join(' ')}"`;
+    
+      if (packages?.length > 0)await execAsync(installCmd, { timeout: 300000 }); // 5 minute timeout
+
+    console.log(`Package installation completed for ${containerName}`);
+  } catch (error) {
+    console.error(`Background package installation failed for ${containerName}:`, error);
+  }
+}
+
+async function executeUserScriptInBackground(containerName, script) {
+  try {
+    const encodedScript = Buffer.from(script).toString('base64');
+    const cmd = `echo ${encodedScript} | base64 -d | docker exec -i ${containerName} bash`;
+    await execAsync(cmd);
+    console.log(`User script executed successfully in ${containerName}`);
+  } catch (error) {
+    console.error(`User script execution failed in ${containerName}:`, error);
+  }
+}
+
+function execAsync(command, options = {}) {
+  return new Promise((resolve, reject) => {
+    exec(command, options, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+  });
+}
 
 app.get("/api/available-packages", (req, res) => {
   res.status(200).json(PACKAGE_LIBRARY);
@@ -549,6 +571,143 @@ app.post("/api/upload/:roomId/:workspaceId", upload.any(), async (req, res) => {
   }
 });
 
+const http = require("http");
+const { Server } = require("socket.io");
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
+
+// Store both incremental stroke data, full canvas state, and chat messages
+const rooms = {};
+
+io.on("connection", (socket) => {
+  console.log("A user connected:", socket.id);
+  
+  // Whiteboard functionality
+  socket.on("joinRoom", (roomId) => {
+    console.log(`User ${socket.id} joined room: ${roomId}`);
+    socket.join(roomId);
+    
+    // Send the current canvas state to the new user
+    if (rooms[roomId] && rooms[roomId].canvasState) {
+      socket.emit("loadCanvas", rooms[roomId].canvasState);
+      console.log(`Sent existing canvas to user ${socket.id} in room ${roomId}`);
+    } else {
+      // Initialize the room if it doesn't exist
+      rooms[roomId] = { 
+        canvasState: null,
+        chatMessages: [] 
+      };
+      console.log(`Created new room: ${roomId}`);
+    }
+  });
+  
+  // Handle individual draw strokes - more efficient for real-time collaboration
+  socket.on("drawing", ({ roomId, startX, startY, endX, endY, color, width, erase }) => {
+    console.log(`Received drawing from ${socket.id} in room ${roomId}`);
+    // Broadcast the stroke to everyone in the room (including sender for confirmation)
+    io.to(roomId).emit("receiveDraw", { startX, startY, endX, endY, color, width, erase });
+  });
+  
+  // Handle full canvas updates after drawing stops
+  socket.on("finalizeDrawing", ({ roomId, data }) => {
+    console.log(`Finalizing drawing in room ${roomId}`);
+    // Store the full canvas state
+    if (!rooms[roomId]) {
+      rooms[roomId] = { 
+        canvasState: null,
+        chatMessages: [] 
+      };
+    }
+    rooms[roomId].canvasState = data;
+  });
+  
+  // Handle canvas clearing
+  socket.on("clearCanvas", ({ roomId }) => {
+    console.log(`Clearing canvas in room ${roomId}`);
+    if (rooms[roomId]) {
+      rooms[roomId].canvasState = null;
+    }
+    // Broadcast to all users in the room including sender
+    io.to(roomId).emit("clearCanvas");
+  });
+  
+  // Chat functionality
+  socket.on("joinChatRoom", ({ roomId, username }) => {
+    console.log(`User ${username} (${socket.id}) joined chat in room: ${roomId}`);
+    socket.join(roomId);
+    
+    // Initialize room if it doesn't exist
+    if (!rooms[roomId]) {
+      rooms[roomId] = { 
+        canvasState: null,
+        chatMessages: [] 
+      };
+    }
+    
+    // Send previous chat messages to the new user
+    if (rooms[roomId].chatMessages && rooms[roomId].chatMessages.length > 0) {
+      socket.emit("loadChatHistory", rooms[roomId].chatMessages);
+      console.log(`Sent chat history to user ${username} in room ${roomId}`);
+    }
+    
+    // Announce new user joined (optional)
+    const joinMessage = {
+      sender: "System",
+      text: `${username} has joined the chat`,
+      timestamp: new Date()
+    };
+    
+    io.to(roomId).emit("receiveMessage", joinMessage);
+    
+    // Store system message in history (optional)
+    if (rooms[roomId].chatMessages) {
+      rooms[roomId].chatMessages.push(joinMessage);
+    }
+  });
+  
+  // Handle new chat messages
+  socket.on("sendMessage", ({ roomId, sender, text, timestamp }) => {
+    console.log(`New message in room ${roomId} from ${sender}: ${text}`);
+    
+    const messageData = {
+      sender,
+      text,
+      timestamp
+    };
+    
+    // Store message in room history
+    if (!rooms[roomId]) {
+      rooms[roomId] = { 
+        canvasState: null,
+        chatMessages: [] 
+      };
+    }
+    
+    if (!rooms[roomId].chatMessages) {
+      rooms[roomId].chatMessages = [];
+    }
+    
+    rooms[roomId].chatMessages.push(messageData);
+    
+    // If chat history gets too long, trim it (optional)
+    if (rooms[roomId].chatMessages.length > 100) {
+      rooms[roomId].chatMessages = rooms[roomId].chatMessages.slice(-100);
+    }
+    
+    // Broadcast to everyone in the room except sender
+    socket.to(roomId).emit("receiveMessage", messageData);
+  });
+  
+  socket.on("disconnect", () => {
+    console.log(`User disconnected: ${socket.id}`);
+    // Room cleanup could be implemented here if needed
+  });
+});
 
 const APP_ID = process.env.APP_ID ;
 const APP_CERTIFICATE = process.env.APP_CERTIFICATE;
@@ -653,7 +812,7 @@ async function execPromise(command) {
 }
 
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
 });
 
