@@ -581,23 +581,19 @@ const io = new Server(server, {
   },
 });
 
-// Store both incremental stroke data, full canvas state, and chat messages
 const rooms = {};
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
   
-  // Whiteboard functionality
   socket.on("joinRoom", (roomId) => {
     console.log(`User ${socket.id} joined room: ${roomId}`);
     socket.join(roomId);
     
-    // Send the current canvas state to the new user
     if (rooms[roomId] && rooms[roomId].canvasState) {
       socket.emit("loadCanvas", rooms[roomId].canvasState);
       console.log(`Sent existing canvas to user ${socket.id} in room ${roomId}`);
     } else {
-      // Initialize the room if it doesn't exist
       rooms[roomId] = { 
         canvasState: null,
         chatMessages: [] 
@@ -606,17 +602,13 @@ io.on("connection", (socket) => {
     }
   });
   
-  // Handle individual draw strokes - more efficient for real-time collaboration
   socket.on("drawing", ({ roomId, startX, startY, endX, endY, color, width, erase }) => {
     console.log(`Received drawing from ${socket.id} in room ${roomId}`);
-    // Broadcast the stroke to everyone in the room (including sender for confirmation)
     io.to(roomId).emit("receiveDraw", { startX, startY, endX, endY, color, width, erase });
   });
   
-  // Handle full canvas updates after drawing stops
   socket.on("finalizeDrawing", ({ roomId, data }) => {
     console.log(`Finalizing drawing in room ${roomId}`);
-    // Store the full canvas state
     if (!rooms[roomId]) {
       rooms[roomId] = { 
         canvasState: null,
@@ -626,22 +618,18 @@ io.on("connection", (socket) => {
     rooms[roomId].canvasState = data;
   });
   
-  // Handle canvas clearing
   socket.on("clearCanvas", ({ roomId }) => {
     console.log(`Clearing canvas in room ${roomId}`);
     if (rooms[roomId]) {
       rooms[roomId].canvasState = null;
     }
-    // Broadcast to all users in the room including sender
     io.to(roomId).emit("clearCanvas");
   });
   
-  // Chat functionality
   socket.on("joinChatRoom", ({ roomId, username }) => {
     console.log(`User ${username} (${socket.id}) joined chat in room: ${roomId}`);
     socket.join(roomId);
     
-    // Initialize room if it doesn't exist
     if (!rooms[roomId]) {
       rooms[roomId] = { 
         canvasState: null,
@@ -649,13 +637,11 @@ io.on("connection", (socket) => {
       };
     }
     
-    // Send previous chat messages to the new user
     if (rooms[roomId].chatMessages && rooms[roomId].chatMessages.length > 0) {
       socket.emit("loadChatHistory", rooms[roomId].chatMessages);
       console.log(`Sent chat history to user ${username} in room ${roomId}`);
     }
     
-    // Announce new user joined (optional)
     const joinMessage = {
       sender: "System",
       text: `${username} has joined the chat`,
@@ -664,13 +650,11 @@ io.on("connection", (socket) => {
     
     io.to(roomId).emit("receiveMessage", joinMessage);
     
-    // Store system message in history (optional)
     if (rooms[roomId].chatMessages) {
       rooms[roomId].chatMessages.push(joinMessage);
     }
   });
   
-  // Handle new chat messages
   socket.on("sendMessage", ({ roomId, sender, text, timestamp }) => {
     console.log(`New message in room ${roomId} from ${sender}: ${text}`);
     
@@ -679,9 +663,7 @@ io.on("connection", (socket) => {
       text,
       timestamp
     };
-    
-    // Store message in room history
-    if (!rooms[roomId]) {
+        if (!rooms[roomId]) {
       rooms[roomId] = { 
         canvasState: null,
         chatMessages: [] 
@@ -694,7 +676,6 @@ io.on("connection", (socket) => {
     
     rooms[roomId].chatMessages.push(messageData);
     
-    // If chat history gets too long, trim it (optional)
     if (rooms[roomId].chatMessages.length > 100) {
       rooms[roomId].chatMessages = rooms[roomId].chatMessages.slice(-100);
     }
@@ -705,7 +686,6 @@ io.on("connection", (socket) => {
   
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
-    // Room cleanup could be implemented here if needed
   });
 });
 
