@@ -25,7 +25,7 @@ function VNCdesktop({ websockifyPort, roomId, isFullScreen }: Props) {
     setLoading(true);
 
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 20;
     let reconnectInterval: NodeJS.Timeout | null = null;
 
     const attemptReconnect = () => {
@@ -80,7 +80,7 @@ function VNCdesktop({ websockifyPort, roomId, isFullScreen }: Props) {
         // showDotCursor
         autoConnect
         rfbOptions={{
-          shared: false,
+          shared: true,
           credentials: {
             username: "user",
             password: "password",
