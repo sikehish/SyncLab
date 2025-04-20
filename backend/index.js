@@ -346,7 +346,6 @@ app.post("/api/switch-workspace", async (req, res) => {
 });
 
 
-//get all snapshots(to be displayed while creating the room)
 app.get("/api/snapshots/:clerkId", async (req, res) => {
   const { clerkId } = req.params;
 
@@ -358,11 +357,27 @@ app.get("/api/snapshots/:clerkId", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
+
     const snapshots = await prisma.snapshot.findMany({
       where: { userId: user.id },
+      orderBy: { createdAt: "desc" } 
     });
 
-    return res.status(200).json(snapshots);
+    const formattedSnapshots = snapshots.map(snapshot => {
+      const [username, repoWithTag] = snapshot.snapshotName.split('/');
+      const [repo, tag] = repoWithTag?.split(':') || [];
+
+      return {
+        id: snapshot.id,
+        snapshotName: snapshot.snapshotName,
+        dockerhubUrl: `https://hub.docker.com/r/${username}/${repo}/tags`,
+        tag: tag || null,
+        createdAt: snapshot.createdAt,
+        containerName: snapshot.containerName
+      };
+    });
+
+    return res.status(200).json(formattedSnapshots);
   } catch (error) {
     console.error("Error fetching snapshots:", error);
     return res.status(500).json({ error: "Failed to fetch snapshots" });
@@ -372,8 +387,15 @@ app.get("/api/snapshots/:clerkId", async (req, res) => {
 //Take a snapshot
 app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
   const { roomId, clerkId } = req.params;
+  const {
+    DOCKERHUB_USERNAME,
+    DOCKERHUB_PASSWORD,
+    DOCKERHUB_REPO = "vnc-snapshots"
+  } = process.env;
 
   try {
+    await execAsync(`echo ${DOCKERHUB_PASSWORD} | docker login -u ${DOCKERHUB_USERNAME} --password-stdin`);
+
     const room = await prisma.room.findUnique({
       where: { roomId },
       include: {
@@ -382,56 +404,48 @@ app.post("/api/snapshot/:roomId/:clerkId", async (req, res) => {
       }
     });
 
-    if (!room) {
-      return res.status(404).json({ error: "Room not found" });
-    }
+    if (!room) return res.status(404).json({ error: "Room not found" });
 
-    const user = await prisma.user.findUnique({
-      where: { clerkId }
-    });
+    const user = await prisma.user.findUnique({ where: { clerkId } });
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     const isCreator = room.creator.clerkId === clerkId;
     const isParticipant = room.participants.some(p => p.clerkId === clerkId);
 
-    if (!isCreator && !isParticipant) {
-      return res.status(403).json({ error: "Unauthorized to take snapshot" });
-    }
+    if (!isCreator && !isParticipant)
+      return res.status(403).json({ error: "Unauthorized" });
 
-    const { containerName } = room;
-    const snapshotName = `snapshot-${user.id}-${Date.now()}`;
+    const containerName = room.containerName;
+    const timestamp = Date.now();
+    const localImageName = `snapshot-${user.id}-${timestamp}`;
+    const dockerhubImageName = `${DOCKERHUB_USERNAME}/${DOCKERHUB_REPO}:${localImageName}`;
 
-    const command = `docker commit ${containerName} ${snapshotName}`;
+    await execAsync(`docker commit ${containerName} ${localImageName}`);
+    await execAsync(`docker tag ${localImageName} ${dockerhubImageName}`);
+    await execAsync(`docker push ${dockerhubImageName}`);
 
-    exec(command, async (error, stdout, stderr) => {
-      if (error) {
-        console.error("Error creating snapshot:", stderr);
-        return res.status(500).json({ error: "Failed to create snapshot" });
-      }
-
-      const snapshot = await prisma.snapshot.create({
-        data: {
-          snapshotName,
-          containerName,
-          userId: user.id,
-        },
-      });
-
-      console.log(`Snapshot created: ${stdout}`);
-      return res.status(200).json({ 
-        message: "Snapshot created successfully", 
-        snapshot,
-        roomId: room.roomId
-      });
+    const snapshot = await prisma.snapshot.create({
+      data: {
+        snapshotName: dockerhubImageName,
+        containerName,
+        userId: user.id,
+        imageUrl: `https://hub.docker.com/r/${DOCKERHUB_USERNAME}/${DOCKERHUB_REPO}/tags`,
+      },
     });
-  } catch (error) {
-    console.error("Error taking snapshot:", error);
-    return res.status(500).json({ error: "Internal server error" });
+
+    return res.status(200).json({
+      message: "Snapshot pushed to Docker Hub successfully",
+      snapshot,
+      roomId: room.roomId
+    });
+
+  } catch (err) {
+    console.error("Snapshot creation error:", err);
+    return res.status(500).json({ error: "Snapshot creation failed" });
   }
 });
+
 
 
 // download a file/folder from the container
@@ -679,8 +693,6 @@ io.on("connection", (socket) => {
     if (rooms[roomId].chatMessages.length > 100) {
       rooms[roomId].chatMessages = rooms[roomId].chatMessages.slice(-100);
     }
-    
-    // Broadcast to everyone in the room except sender
     socket.to(roomId).emit("receiveMessage", messageData);
   });
   
