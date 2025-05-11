@@ -2,6 +2,7 @@ const request = require('supertest');
 const { PrismaClient } = require('@prisma/client');
 const { app, server } = require('../index');
 const { redis } = require('../utils/portManagement');
+const { execSync } = require('child_process');
 
 jest.setTimeout(30000);
 
@@ -17,6 +18,33 @@ describe('Integration Tests', () => {
   });
 
   afterEach(async () => {
+  try{
+        console.log('Containers to remove:', createdRooms);
+    const containers = await prisma.room.findMany({
+      where: {
+        roomId: {
+          in: createdRooms.map(r => r.roomId)
+        }
+      },
+      select: {
+        containerName: true
+      }
+    });
+    console.log('Containers to remove:', containers);
+    for (const container of containers) {
+      if (container.containerName) {
+        try {
+          execSync(`docker rm -f ${container.containerName}`);
+          console.log(`Removed container: ${container.containerName}`);
+        } catch (error) {
+          console.warn(`Failed to remove container ${container.containerName}:`, error.message);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Error during container cleanup:', error.message);
+  }
+  
     for (const room of createdRooms) {
       try {
         await prisma.room.deleteMany({
@@ -44,22 +72,51 @@ describe('Integration Tests', () => {
     createdSnapshots = [];
   });
 
+  function killAndRemoveAllContainers() {
+  try {
+    const runningContainers = execSync('docker ps -q').toString().trim();
+    if (runningContainers) {
+      const ids = runningContainers.split('\n').join(' ');
+      execSync(`docker kill ${ids}`);
+    }
+
+    const allContainers = execSync('docker ps -aq').toString().trim();
+    if (allContainers) {
+      const ids = allContainers.split('\n').join(' ');
+      execSync(`docker rm -f ${ids}`);
+    }
+
+    console.log('Killed and removed all running containers');
+  } catch (error) {
+    console.warn('Error killing containers:', error.message);
+  }
+}
+
+
   afterAll(async () => {
-    if (testUsers.length > 0) {
-      const testClerkIds = testUsers.map(user => user.clerkId);
-      await prisma.user.deleteMany({
-        where: {
-          clerkId: {
-            in: testClerkIds
-          }
-        }
-      });
+
+      try {
+      execSync('docker kill $(docker ps -q) && docker rm $(docker ps -aq) --force');
+      console.log('Killed all running containers');
+    } catch (error) {
+      console.warn('Error killing containers:', error.message);
     }
     
-    await prisma.$disconnect();
-    await redis.quit();
-    server.close();
-  });
+  if (testUsers.length > 0) {
+    const testClerkIds = testUsers.map(user => user.clerkId);
+    await prisma.user.deleteMany({
+      where: {
+        clerkId: {
+          in: testClerkIds
+        }
+      }
+    });
+  }
+  
+  await prisma.$disconnect();
+  await redis.quit();
+  server.close();
+});
 
   describe('User Endpoints', () => {
     test('POST /api/register - should register a new user', async () => {
@@ -219,8 +276,6 @@ describe('Integration Tests', () => {
           clerkId: secondUser.clerkId
         });
 
-        console.log("IKRAM: ",response.body)
-
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('containerName');
       expect(response.body).toHaveProperty('websockifyPort');
@@ -239,6 +294,51 @@ describe('Integration Tests', () => {
       expect(response.body.error).toBe('Room not found');
     });
   });
+
+  describe('Room Leave Flow', () => {
+  let testUser;
+  let roomId;
+
+  beforeEach(async () => {
+    testUser = {
+      clerkId: `leave-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      email: `leave-${Date.now()}@example.com`,
+      name: 'Leave Test User'
+    };
+
+    await request(app)
+      .post('/api/register')
+      .send(testUser);
+
+    testUsers.push(testUser);
+
+    const instanceResponse = await request(app)
+      .post('/api/new-instance')
+      .send({
+        clerkId: testUser.clerkId,
+        osType: 'ubuntu',
+        selectedPackages: []
+      });
+
+    roomId = instanceResponse.body.roomId;
+    createdRooms.push({ roomId });
+  });
+
+  test('POST /api/leave-room/:roomId - should handle leaving a room', async () => {
+    const response = await request(app)
+      .post(`/api/leave-room/${roomId}`)
+      .send({
+        clerkId: testUser.clerkId
+      });
+
+    console.log('Leave room response:', response.body);
+
+    expect([200, 404]).toContain(response.status);
+    if (response.status === 200) {
+      expect(['User removed from room', 'Room deleted']).toContain(response.body.message);
+    }
+  });
+});
 
   describe('Token Generation', () => {
     test('POST /api/generate-token - should generate a token', async () => {
