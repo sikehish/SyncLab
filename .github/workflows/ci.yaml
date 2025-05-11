@@ -1,0 +1,113 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Run unit tests
+      run: npm run test:unit
+      env:
+        DATABASE_URL: postgresql://test:test@localhost:5432/test?schema=public
+        REDIS_URL: redis://localhost:6379
+
+    - name: Run integration tests
+      run: npm run test:integration
+      env:
+        DATABASE_URL: postgresql://test:test@localhost:5432/test?schema=public
+        REDIS_URL: redis://localhost:6379
+
+  build:
+    name: Build Docker Images
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Login to Docker Hub
+      if: github.ref == 'refs/heads/main'
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+    - name: Build Ubuntu Image
+      run: |
+        docker build -f ../Desktops/Dockerfile.ubuntu -t ubuntu-vnc-image .
+        docker images
+
+    - name: Build Debian Image
+      run: |
+        docker build -f ../Desktops/Dockerfile.debian -t debian-vnc-image .
+        docker images
+
+    - name: Build Kali Image
+      run: |
+        docker build -f ../Desktops/Dockerfile.kali -t kali-vnc-image .
+        docker images
+
+    - name: Push Images to Docker Hub
+      if: github.ref == 'refs/heads/main'
+      run: |
+        docker tag ubuntu-vnc-image ${{ secrets.DOCKER_HUB_USERNAME }}/ubuntu-vnc-image:latest
+        docker tag debian-vnc-image ${{ secrets.DOCKER_HUB_USERNAME }}/debian-vnc-image:latest
+        docker tag kali-vnc-image ${{ secrets.DOCKER_HUB_USERNAME }}/kali-vnc-image:latest
+        
+        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/ubuntu-vnc-image:latest
+        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/debian-vnc-image:latest
+        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/kali-vnc-image:latest
+
+  cleanup:
+    name: Cleanup
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Clean Docker containers
+      run: |
+        docker ps -aq | xargs -r docker rm -f || true
+        docker system prune -af --volumes || true
