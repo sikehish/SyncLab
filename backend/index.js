@@ -227,26 +227,13 @@ app.post("/api/join", async (req, res) => {
       });
     }
 
-    const updatedRoom = await prisma.room.update({
-      where: { roomId },
-      data: {
-        participants: {
-          connect: { id: user.id }
-        }
-      },
-      include: {
-        creator: true,
-        participants: true
-      }
-    });
-
     return res.status(200).json({ 
-      containerName: updatedRoom.containerName, 
-      websockifyPort: updatedRoom.websockifyPorts[0],
-      osType: updatedRoom.osType,
+      containerName: room.containerName, 
+      websockifyPort: room.websockifyPorts[0],
+      osType: room.osType,
       creator: {
-        id: updatedRoom.creator.id,
-        name: updatedRoom.creator.name
+        id: room.creator.id,
+        name: room.creator.name
       }
     });
   } catch (error) {
@@ -501,10 +488,10 @@ app.get("/api/download/:roomId/:workspaceId", async (req, res) => {
 
 app.post("/api/upload/:roomId/:workspaceId", upload.any(), async (req, res) => {
   const { roomId, workspaceId } = req.params;
-  const containerBasePath =`/home/user${workspaceId}/CodeFiles`;
+  const containerBasePath = `/home/user${workspaceId}/CodeFiles`;
   const relativePaths = req.body["relativePaths"]; 
-  try {
 
+  try {
     const room = await prisma.room.findUnique({
       where: { roomId }
     });
@@ -521,53 +508,213 @@ app.post("/api/upload/:roomId/:workspaceId", upload.any(), async (req, res) => {
 
     for (const [index, file] of req.files.entries()) {
       const localFilePath = path.resolve(file.path);
-      const relativePath = relativePaths[index];
+      const relativePath = Array.isArray(relativePaths)
+        ? relativePaths[index]
+        : relativePaths;
       const containerFilePath = path.posix.join(containerBasePath, relativePath);
       const containerDirPath = path.posix.dirname(containerFilePath);
 
-      console.log("Local File Path:", localFilePath);
-      console.log("Container File Path:", containerFilePath);
-      console.log("Container Dir Path:", containerDirPath);
-
-      exec(`docker exec ${containerName} mkdir -p "${containerDirPath}"`, (error, stdout, stderr) => {
-        if (error) {
-          console.error(`exec error: ${error}`);
-          return;
-        }
-        if (stderr) {
-          console.error(`stderr: ${stderr}`);
-          return;
-        }
-
-        console.log(`stdout: ${stdout}`);
-
-        const copyCommand = `docker cp "${localFilePath}" "${containerName}:${containerFilePath}"`;
-        exec(copyCommand, (error, stdout, stderr) => {
-          if (error) {
-            console.error(`exec error: ${error}`);
-            return;
-          }
-          if (stderr) {
-            console.error(`stderr: ${stderr}`);
-            return;
-          }
-
-          console.log(`stdout: ${stdout}`);
-          fs.unlink(localFilePath, (err) => {
-            if (err) {
-              console.error(`Error deleting file ${localFilePath}:`, err);
-            } else {
-              console.log(`File ${localFilePath} deleted successfully`);
-            }
-          });
-        });
-      });
+      await execPromise(`docker exec ${containerName} mkdir -p "${containerDirPath}"`);
+      await execPromise(`docker cp "${localFilePath}" "${containerName}:${containerFilePath}"`);
+      await fs.promises.unlink(localFilePath);
     }
 
     res.status(200).json({ message: "Files and directories uploaded and deleted successfully" });
   } catch (error) {
     console.error("Error handling upload request:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+const waitingUsers = {};
+
+// Check if user is approved to join room
+app.get("/api/check-approval/:roomId/:clerkId", async (req, res) => {
+  const { roomId, clerkId } = req.params;
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+      include: {
+        creator: true,
+        participants: true
+      }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if user is already a participant (approved)
+    const isParticipant = room.participants.some(p => p.id === user.id);
+    const isCreator = room.creator.id === user.id;
+
+    // Creator is always approved
+    if (isCreator) {
+      return res.status(200).json({ approved: true });
+    }
+
+    // Return approval status
+    return res.status(200).json({ 
+      approved: isParticipant,
+      isWaiting: waitingUsers[roomId]?.includes(clerkId) || false
+    });
+  } catch (error) {
+    console.error("Error checking approval status:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Request to join a room (for non-creators)
+app.post("/api/request-join", async (req, res) => {
+  const { roomId, clerkId } = req.body;
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+      include: {
+        creator: true
+      }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Add user to waiting list
+    if (!waitingUsers[roomId]) {
+      waitingUsers[roomId] = [];
+    }
+    
+    if (!waitingUsers[roomId].includes(clerkId)) {
+      waitingUsers[roomId].push(clerkId);
+    }
+
+    // Notify room creator about waiting user (you can implement this with socket.io)
+    // socket.to(room.creator.clerkId).emit('userWaiting', { user: user.name, clerkId, roomId });
+
+    return res.status(200).json({ message: "Join request sent" });
+  } catch (error) {
+    console.error("Error requesting to join room:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Approve user to join room
+app.post("/api/approve-join", async (req, res) => {
+  const { roomId, clerkId } = req.body;
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { clerkId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Add user to room participants
+    await prisma.room.update({
+      where: { roomId },
+      data: {
+        participants: {
+          connect: { id: user.id }
+        }
+      }
+    });
+
+    // Remove from waiting list
+    if (waitingUsers[roomId]) {
+      waitingUsers[roomId] = waitingUsers[roomId].filter(id => id !== clerkId);
+    }
+
+    return res.status(200).json({ message: "User approved to join" });
+  } catch (error) {
+    console.error("Error approving user:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Cancel join request
+app.post("/api/cancel-join/:roomId/:clerkId", async (req, res) => {
+  const { roomId, clerkId } = req.params;
+
+  try {
+    // Remove from waiting list
+    if (waitingUsers[roomId]) {
+      waitingUsers[roomId] = waitingUsers[roomId].filter(id => id !== clerkId);
+    }
+
+    return res.status(200).json({ message: "Join request canceled" });
+  } catch (error) {
+    console.error("Error canceling join request:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get waiting users for a room
+app.get("/api/waiting-users/:roomId", async (req, res) => {
+  const { roomId } = req.params;
+
+  try {
+    const room = await prisma.room.findUnique({
+      where: { roomId },
+      include: {
+        creator: true
+      }
+    });
+
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+
+    const waitingList = waitingUsers[roomId] || [];
+    const waitingUserDetails = [];
+
+    // Get user details for each waiting user
+    for (const clerkId of waitingList) {
+      const user = await prisma.user.findUnique({
+        where: { clerkId }
+      });
+      
+      if (user) {
+        waitingUserDetails.push({
+          id: user.id,
+          clerkId: user.clerkId,
+          name: user.name,
+          email: user.email
+        });
+      }
+    }
+
+    return res.status(200).json(waitingUserDetails);
+  } catch (error) {
+    console.error("Error fetching waiting users:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -580,6 +727,7 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
   },
 });
+
 
 const rooms = {};
 
@@ -687,6 +835,31 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`User disconnected: ${socket.id}`);
   });
+
+  socket.on("joinWaitingRoom", ({ roomId, clerkId, username }) => {
+    socket.join(`waiting:${roomId}`);
+    console.log(`User ${username} (${clerkId}) is waiting to join room ${roomId}`);
+    
+    // Notify room creator
+    io.to(roomId).emit("userWaiting", { 
+      clerkId, 
+      username,
+      timestamp: new Date()
+    });
+  });
+  
+  // Notify waiting users when they're approved
+  socket.on("approveUser", ({ roomId, clerkId }) => {
+    io.to(`waiting:${roomId}`).emit("joinApproved", { clerkId, roomId });
+    console.log(`User ${clerkId} approved to join room ${roomId}`);
+  });
+  
+  // Notify waiting users when they're denied
+  socket.on("denyUser", ({ roomId, clerkId }) => {
+    io.to(`waiting:${roomId}`).emit("joinDenied", { clerkId, roomId });
+    console.log(`User ${clerkId} denied access to room ${roomId}`);
+  });
+
 });
 
 const APP_ID = process.env.APP_ID ;
@@ -824,3 +997,5 @@ app.get("/api/chat", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+module.exports = { app, server };
