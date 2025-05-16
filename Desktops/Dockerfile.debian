@@ -69,6 +69,11 @@ RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor 
     && apt-get update && apt-get install -y code \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+    RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
+
+
+
 RUN for user in user1 user2; do \
     useradd -m -s /bin/bash "$user" && \
     echo "$user:password" | chpasswd && \

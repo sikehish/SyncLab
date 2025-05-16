@@ -54,6 +54,9 @@ RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor 
     && apt-get update && apt-get install -y code \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+    RUN mkdir -p /tmp/.X11-unix && \
+    chmod 1777 /tmp/.X11-unix
+
     RUN apt-get update && apt-get install -y \
     xfce4-terminal
 
@@ -145,7 +148,7 @@ RUN chmod 0440 /etc/sudoers.d/* && \
     rm -f /etc/xdg/autostart/*keyring*.desktop
     
 CMD ["/bin/sh", "-c", \
-    "rm -f /tmp/.X* && \
+    "rm -f /tmp/.X*-lock && \
     for user in user1 user2; do \
         DISPLAY_NUM=$(if [ \"$user\" = \"user1\" ]; then echo 1; else echo 2; fi); \
         mkdir -p /home/$user/.vnc && \
