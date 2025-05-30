@@ -227,13 +227,26 @@ app.post("/api/join", async (req, res) => {
       });
     }
 
+    const updatedRoom = await prisma.room.update({
+      where: { roomId },
+      data: {
+        participants: {
+          connect: { id: user.id }
+        }
+      },
+      include: {
+        creator: true,
+        participants: true
+      }
+    });
+
     return res.status(200).json({ 
-      containerName: room.containerName, 
-      websockifyPort: room.websockifyPorts[0],
-      osType: room.osType,
+      containerName: updatedRoom.containerName, 
+      websockifyPort: updatedRoom.websockifyPorts[0],
+      osType: updatedRoom.osType,
       creator: {
-        id: room.creator.id,
-        name: room.creator.name
+        id: updatedRoom.creator.id,
+        name: updatedRoom.creator.name
       }
     });
   } catch (error) {
@@ -241,6 +254,7 @@ app.post("/api/join", async (req, res) => {
     return res.status(500).json({ error: "Failed to join room" });
   }
 });
+
 
 app.post("/api/leave-room/:roomId", async (req, res) => {
   const { roomId } = req.params;
@@ -264,7 +278,7 @@ app.post("/api/leave-room/:roomId", async (req, res) => {
 
     if (!user) return res.status(404).json({ error: "User not found" });
   
-    const isParticipant = room.participants.some(p => p.id === user.id);
+    const isParticipant = room.participants.some(p => p.id === user.id);1747403879177
     if (!isParticipant) return res.status(400).json({ error: "User is not in this room" });
     
     await prisma.room.update({

@@ -52,11 +52,11 @@ RUN apt-get update --fix-missing && \
     apt-get remove -y blueman bluez bluez-cups bluez-obexd update-manager update-notifier update-notifier-common && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-# RUN apt-get purge -y firefox && \
-#     add-apt-repository -y ppa:mozillateam/ppa && \
-#     echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' | tee /etc/apt/preferences.d/mozilla-firefox && \
-#     apt-get update && \
-#     apt-get install -y firefox
+RUN apt-get purge -y firefox && \
+    add-apt-repository -y ppa:mozillateam/ppa && \
+    echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' | tee /etc/apt/preferences.d/mozilla-firefox && \
+    apt-get update && \
+    apt-get install -y firefox
 
 
 RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg && \
