@@ -4,6 +4,9 @@ const { PrismaClient } = require('@prisma/client');
 const { initializePorts, getNextAvailablePorts, releasePorts } = require('../utils/portManagement');
 const PACKAGE_LIBRARY = require('../utils/packageLibrary');
 
+process.env.APP_ID = 'test_app_id';
+process.env.APP_CERTIFICATE = 'test_app_certificate';
+
 // Mock external dependencies
 jest.mock('child_process');
 jest.mock('@prisma/client');
@@ -56,8 +59,13 @@ initializePorts.mockImplementation(() => {});
 getNextAvailablePorts.mockResolvedValue([5001, 5002]);
 releasePorts.mockResolvedValue(true);
 
-// Mock exec
-exec.mockImplementation((command, callback) => callback(null, 'success', ''));
+// Mock exec - handles both 2 and 3 parameter calls
+exec.mockImplementation((command, optionsOrCallback, callback) => {
+  const actualCallback = typeof optionsOrCallback === 'function' ? optionsOrCallback : callback;
+  if (actualCallback) {
+    actualCallback(null, 'success', '');
+  }
+});
 
 describe('User Registration', () => {
     beforeEach(() => {
