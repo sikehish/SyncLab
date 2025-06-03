@@ -34,78 +34,108 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: 20
-        cache: 'npm'
 
-    - name: Install dependencies
-      run: npm install
+    - name: Cache backend node modules
+      uses: actions/cache@v4
+      with:
+        path: backend/node_modules
+        key: ${{ runner.os }}-backend-node-${{ hashFiles('backend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-backend-node-
+
+    - name: Cache frontend node modules
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: ${{ runner.os }}-frontend-node-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-frontend-node-
+
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: npm ci
+
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Run Prisma migrations
+      working-directory: ./backend
+      run: npx prisma migrate deploy
+      env:
+        DATABASE_URL: postgresql://test:test@localhost:5432/test?schema=public
 
     - name: Run unit tests
+      working-directory: ./backend
       run: npm run test:unit
       env:
         DATABASE_URL: postgresql://test:test@localhost:5432/test?schema=public
         REDIS_URL: redis://localhost:6379
+        NODE_ENV: test
 
     - name: Run integration tests
+      working-directory: ./backend
       run: npm run test:integration
       env:
         DATABASE_URL: postgresql://test:test@localhost:5432/test?schema=public
         REDIS_URL: redis://localhost:6379
+        NODE_ENV: test
 
   build:
     name: Build Docker Images
     needs: test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      uses: docker/setup-buildx-action@v3
 
     - name: Login to Docker Hub
       if: github.ref == 'refs/heads/main'
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
     - name: Build Ubuntu Image
       run: |
-        docker build -f ../Desktops/Dockerfile.ubuntu -t ubuntu-vnc-image .
+        docker build -f Desktops/Dockerfile.ubuntu -t ubuntu-vnc-image .
         docker images
 
     - name: Build Debian Image
       run: |
-        docker build -f ../Desktops/Dockerfile.debian -t debian-vnc-image .
+        docker build -f Desktops/Dockerfile.debian -t debian-vnc-image .
         docker images
 
     - name: Build Kali Image
       run: |
-        docker build -f ../Desktops/Dockerfile.kali -t kali-vnc-image .
+        docker build -f Desktops/Dockerfile.kali -t kali-vnc-image .
         docker images
 
     - name: Push Images to Docker Hub
       if: github.ref == 'refs/heads/main'
       run: |
-        docker tag ubuntu-vnc-image ${{ secrets.DOCKER_HUB_USERNAME }}/ubuntu-vnc-image:latest
-        docker tag debian-vnc-image ${{ secrets.DOCKER_HUB_USERNAME }}/debian-vnc-image:latest
-        docker tag kali-vnc-image ${{ secrets.DOCKER_HUB_USERNAME }}/kali-vnc-image:latest
+        docker tag ubuntu-vnc-image ${{ secrets.DOCKERHUB_USERNAME }}/ubuntu-vnc-image:latest
+        docker tag debian-vnc-image ${{ secrets.DOCKERHUB_USERNAME }}/debian-vnc-image:latest
+        docker tag kali-vnc-image ${{ secrets.DOCKERHUB_USERNAME }}/kali-vnc-image:latest
         
-        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/ubuntu-vnc-image:latest
-        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/debian-vnc-image:latest
-        docker push ${{ secrets.DOCKER_HUB_USERNAME }}/kali-vnc-image:latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/ubuntu-vnc-image:latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/debian-vnc-image:latest
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kali-vnc-image:latest
 
   cleanup:
     name: Cleanup
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Clean Docker containers
       run: |
